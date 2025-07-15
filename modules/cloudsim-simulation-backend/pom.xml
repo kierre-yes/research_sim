@@ -22,9 +22,13 @@
     </parent>
 
     <properties>
+        <!-- Absolute path to MATLAB engine JAR -->
+        <matlab.engine.jar>C:\Program Files\MATLAB\R2025a\extern\engines\java\jar\engine.jar</matlab.engine.jar>
         <java.version>21</java.version>
         <lombok.version>1.18.34</lombok.version>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <!-- Native DLL directories for MATLAB Engine (semicolon-separated) -->
+        <matlab.library.path>C:\Program Files\MATLAB\R2025a\bin\win64;C:\Program Files\MATLAB\R2025a\extern\engines\java\win64</matlab.library.path>
     </properties>
 
     <dependencies>
@@ -78,6 +82,14 @@
             <artifactId>mockito-core</artifactId>
             <scope>test</scope>
         </dependency>
+        <!-- MATLAB Engine API (local system scope) -->
+        <dependency>
+            <groupId>com.mathworks</groupId>
+            <artifactId>matlab-engine</artifactId>
+            <version>R2025a</version>
+            <scope>system</scope>
+            <systemPath>${matlab.engine.jar}</systemPath>
+        </dependency>
     </dependencies>
 
     <build>
@@ -85,6 +97,14 @@
             <plugin>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-maven-plugin</artifactId>
+                <configuration>
+                    <environmentVariables>
+                        <!-- Prepend MATLAB DLL dirs to PATH for native dependencies -->
+                        <PATH>C:\Program Files\MATLAB\R2025a\bin\win64;C:\Program Files\MATLAB\R2025a\extern\bin\win64;${env.PATH}</PATH>
+                    </environmentVariables>
+                    <!-- Pass MATLAB native DLL path to the forked JVM -->
+                    <jvmArguments>-Djava.library.path="${matlab.library.path}"</jvmArguments>
+                </configuration>
             </plugin>
 
             <plugin>
