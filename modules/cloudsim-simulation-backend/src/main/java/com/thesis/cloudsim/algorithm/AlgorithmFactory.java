@@ -1,49 +1,55 @@
 package com.thesis.cloudsim.algorithm;
 
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Set;
-
 /**
- * Factory class for creating scheduling algorithm instances
- * Provides a centralized way to instantiate and configure algorithms
+ * Factory class for creating *very simple* instances of the scheduling algorithms that ship with the
+ * project.  We intentionally avoid complex reflection so that a beginner who has only been coding
+ * Java for a few months can follow the code path line-by-line.
+ *
+ * The public contract remains the same – supply an algorithm name and we hand back an
+ * {@link ISchedulingAlgorithm}. Internally we now rely on a plain old <code>switch</code> statement
+ * which is familiar to every Java newbie.
  */
 public class AlgorithmFactory {
-    private static final Map<String, Class<? extends ISchedulingAlgorithm>> algorithmRegistry = new HashMap<>();
-
-    static {
-        // Register available algorithms
-        algorithmRegistry.put("EPSO", EnhancedPSO.class);
-        algorithmRegistry.put("EnhancedPSO", EnhancedPSO.class);
-        algorithmRegistry.put("EACO", EnhancedACO.class);
-        algorithmRegistry.put("EnhancedACO", EnhancedACO.class);
-    }
 
     /**
-     * Create an algorithm instance by name
-     * @param algorithmName Name of the algorithm
-     * @return Algorithm instance
-     * @throws IllegalArgumentException if algorithm is not found
+     * Creates ("new") an algorithm instance that corresponds to the supplied name.
+     * <p>
+     * Supported values:
+     * <ul>
+     *   <li>"EPSO" or "EnhancedPSO" for Particle-Swarm-Optimisation</li>
+     *   <li>"EACO" or "EnhancedACO" for Ant-Colony-Optimisation</li>
+     * </ul>
+     * Anything else results in an {@link IllegalArgumentException} so that the caller gets fast
+     * feedback about the spelling mistake.
+     *
+     * @param algorithmName user-supplied identifier (case insensitive)
+     * @return a <strong>new</strong> instance of the requested algorithm ready for configuration
+     * @throws IllegalArgumentException when the name is not recognised
      */
     public static ISchedulingAlgorithm createAlgorithm(String algorithmName) {
-        Class<? extends ISchedulingAlgorithm> algorithmClass = algorithmRegistry.get(algorithmName);
-        if (algorithmClass == null) {
-            throw new IllegalArgumentException("Unknown algorithm: " + algorithmName +
-                    ". Available algorithms: " + algorithmRegistry.keySet());
+        if (algorithmName == null) {
+            throw new IllegalArgumentException("Algorithm name must not be null");
         }
-        try {
-            return algorithmClass.getDeclaredConstructor().newInstance();
-        } catch (Exception e) {
-            throw new RuntimeException("Failed to create algorithm instance: " + algorithmName, e);
+
+        switch (algorithmName.toUpperCase()) {
+            case "EPSO":
+            case "ENHANCEDPSO":
+                return new EnhancedPSO();
+            case "EACO":
+            case "ENHANCEDACO":
+                return new EnhancedACO();
+            default:
+                throw new IllegalArgumentException("Unknown algorithm: " + algorithmName);
         }
     }
 
     /**
-     * Get all available algorithm names
-     * @return Set of algorithm names
+     * Returns the small set of strings that are valid inputs for {@link #createAlgorithm(String)}.
+     * This helper is handy when you want to list the available choices in a UI drop-down.
      */
-    public static Set<String> getAvailableAlgorithms() {
-        return algorithmRegistry.keySet();
+    public static java.util.Set<String> getAvailableAlgorithms() {
+        // Using Set.of keeps the code compact and immutable – ideal for a constant collection.
+        return java.util.Set.of("EPSO", "EnhancedPSO", "EACO", "EnhancedACO");
     }
 
     /**

@@ -15,12 +15,14 @@ public class SimulationResults {
     @Data
     @Builder
     public static class Summary {
-        private double averageResponseTime;
         private double makespan;
-        private int totalCloudlets;
-        private int finishedCloudlets;
-        private double imbalanceDegree;
+        private double energyConsumption;
+        private double loadBalance;
         private double resourceUtilization;
+        private double responseTime;
+        private double fitness;
+        private double totalCost;
+        private double costEfficiency;
     }
     
     @Data

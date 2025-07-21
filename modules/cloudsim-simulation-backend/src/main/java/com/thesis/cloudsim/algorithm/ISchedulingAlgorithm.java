@@ -1,7 +1,7 @@
 package com.thesis.cloudsim.algorithm;
 
-import org.cloudbus.cloudsim.cloudlets.Cloudlet;
-import org.cloudbus.cloudsim.vms.Vm;
+import org.cloudbus.cloudsim.Cloudlet;
+import org.cloudbus.cloudsim.Vm;
 import java.util.List;
 import java.util.Map;
 

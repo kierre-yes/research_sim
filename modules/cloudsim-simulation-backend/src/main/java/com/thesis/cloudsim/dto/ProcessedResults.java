@@ -9,7 +9,7 @@ import java.util.Map;
 @Data
 @Builder
 public class ProcessedResults {
-    /** Unique ID for correlation */
+/** Unique ID to correlate simulation + MATLAB plots */
     private String simulationId;
     /** Raw numerical results coming from CloudSim run */
     private SimulationResults rawResults;

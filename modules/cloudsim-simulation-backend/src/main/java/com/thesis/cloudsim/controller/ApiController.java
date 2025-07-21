@@ -2,9 +2,10 @@ package com.thesis.cloudsim.controller;
 
 import com.thesis.cloudsim.dto.SimulationRequest;
 import com.thesis.cloudsim.metrics.SimulationResults;
-import com.thesis.cloudsim.controller.EnhancedSimulationManager;
+// Import the new, simplified simulation manager located in the "simulation" package
+import com.thesis.cloudsim.simulation.EnhancedSimulationManager;
+// Removed old SimulationManager import – we now use EnhancedSimulationManager (see above).
 import com.thesis.cloudsim.algorithm.ISchedulingAlgorithm;
-import com.thesis.cloudsim.algorithm.AlgorithmFactory;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.ResponseEntity;
@@ -37,14 +38,17 @@ public class ApiController {
     @PostMapping("/run")
     public ResponseEntity<SimulationResults> runSimulation(@RequestBody SimulationRequest request) {
         try {
+            // Pick algorithm instance based on simple string comparison (no reflection)
             ISchedulingAlgorithm algorithm = "EPSO".equalsIgnoreCase(request.getOptimizationAlgorithm()) ? epso : eaco;
-            
-            // Create enhanced simulation manager that uses the request parameters
+
+            // Create the simulation manager that builds the datacenter and runs CloudSim
             EnhancedSimulationManager manager = new EnhancedSimulationManager(algorithm, request);
             SimulationResults results = manager.run();
-            
+
+            // Return HTTP 200 with JSON body
             return ResponseEntity.ok(results);
         } catch (Exception e) {
+            e.printStackTrace();
             return ResponseEntity.badRequest().build();
         }
     }
@@ -62,15 +66,16 @@ public class ApiController {
             Files.copy(file.getInputStream(), tempFile, StandardCopyOption.REPLACE_EXISTING);
             request.setWorkloadPath(tempFile.toString());
             
+            // Choose algorithm (simple ternary operator – beginner-friendly)
             ISchedulingAlgorithm algorithm = "EPSO".equalsIgnoreCase(request.getOptimizationAlgorithm()) ? epso : eaco;
-            
-            // Create enhanced simulation manager that uses the request parameters
+
+            // Run the simulation with the uploaded workload file
             EnhancedSimulationManager manager = new EnhancedSimulationManager(algorithm, request);
             SimulationResults results = manager.run();
-            
-            // Clean up temp file
+
+            // Clean up the temporary CSV once done
             Files.deleteIfExists(tempFile);
-            
+
             return ResponseEntity.ok(results);
         } catch (Exception e) {
             return ResponseEntity.badRequest().build();

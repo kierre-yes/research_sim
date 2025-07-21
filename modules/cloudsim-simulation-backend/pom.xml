@@ -31,6 +31,13 @@
         <matlab.library.path>C:\Program Files\MATLAB\R2025a\bin\win64;C:\Program Files\MATLAB\R2025a\extern\engines\java\win64</matlab.library.path>
     </properties>
 
+    <repositories>
+        <repository>
+            <id>cloudsim-repo</id>
+            <url>https://repo.cloudsim.org/repository/maven-releases/</url>
+        </repository>
+    </repositories>
+
     <dependencies>
         <!-- Spring REST stack -->
         <dependency>
@@ -42,18 +49,12 @@
             <artifactId>spring-boot-starter-validation</artifactId>
         </dependency>
 
-        <!-- CloudSim 7 G core (built by the parent reactor) -->
-        <dependency>
-            <groupId>org.cloudbus.cloudsim</groupId>
-            <artifactId>cloudsim</artifactId>
-            <version>7.0.0-alpha</version>
-            <scope>provided</scope>        <!-- or just remove the dependency -->
-        </dependency>
+        
 
 <dependency>
-    <groupId>org.cloudsimplus</groupId>
-    <artifactId>cloudsim-plus</artifactId>
-    <version>4.3.5</version>
+    <groupId>org.cloudbus.cloudsim</groupId>
+    <artifactId>cloudsim</artifactId>
+    <version>7.0.0-alpha</version>
 </dependency>
 
         <!-- Maths helpers -->

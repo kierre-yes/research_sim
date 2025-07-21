@@ -1,19 +1,19 @@
 package com.thesis.cloudsim.configurator;
 
 import org.cloudbus.cloudsim.core.CloudSim;
-import org.cloudbus.cloudsim.core.Simulation;
-import org.cloudbus.cloudsim.datacenters.Datacenter;
-import org.cloudbus.cloudsim.datacenters.DatacenterSimple;
-import org.cloudbus.cloudsim.hosts.Host;
-import org.cloudbus.cloudsim.hosts.HostSimple;
+import org.cloudbus.cloudsim.Datacenter;
+import org.cloudbus.cloudsim.DatacenterCharacteristics;
+import org.cloudbus.cloudsim.Host;
+import org.cloudbus.cloudsim.Vm;
+import org.cloudbus.cloudsim.VmAllocationPolicySimple;
+import org.cloudbus.cloudsim.VmSchedulerTimeShared;
+import org.cloudbus.cloudsim.CloudletSchedulerTimeShared;
 import org.cloudbus.cloudsim.power.models.PowerModelLinear;
-import org.cloudbus.cloudsim.provisioners.ResourceProvisionerSimple;
-import org.cloudbus.cloudsim.resources.Pe;
-import org.cloudbus.cloudsim.resources.PeSimple;
-import org.cloudbus.cloudsim.schedulers.cloudlet.CloudletSchedulerTimeShared;
-import org.cloudbus.cloudsim.schedulers.vm.VmSchedulerTimeShared;
-import org.cloudbus.cloudsim.vms.Vm;
-import org.cloudbus.cloudsim.vms.VmSimple;
+import org.cloudbus.cloudsim.provisioners.BwProvisionerSimple;
+import org.cloudbus.cloudsim.provisioners.RamProvisionerSimple;
+import org.cloudbus.cloudsim.provisioners.PeProvisionerSimple;
+import org.cloudbus.cloudsim.Pe;
+import org.cloudbus.cloudsim.Storage;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -56,44 +56,97 @@ public class DataCenterConfigurator {
     }
 
     /**
-     * Creates a Datacenter pre-populated with Hosts configured per constructor parameters.
+     * Creates a Datacenter pre-populated with Hosts.
+     * We avoid advanced Streams – a simple loop builds each Host so the code is
+     * 100 % traceable by beginners.
      */
-    public Datacenter configureDatacenter(CloudSim sim) {
-        return new DatacenterSimple((Simulation) sim, configureHosts());
+    public Datacenter configureDatacenter(String name) {
+        try {
+            // Create DatacenterCharacteristics
+            String arch = "x86";
+            String os = "Linux";
+            String vmm = "Xen";
+            double time_zone = 10.0;
+            double cost = 3.0;
+            double costPerMem = 0.05;
+            double costPerStorage = 0.001;
+            double costPerBw = 0.0;
+            
+            List<Host> hostList = buildHosts();
+            DatacenterCharacteristics characteristics = new DatacenterCharacteristics(
+                arch, os, vmm, hostList, time_zone, cost, costPerMem, costPerStorage, costPerBw);
+            
+            // Create Datacenter with VmAllocationPolicy and empty storage list
+            List<Storage> storageList = new ArrayList<>();
+            Datacenter datacenter = new Datacenter(name, characteristics, 
+                new VmAllocationPolicySimple(hostList), storageList, 1.0);
+            
+            return datacenter;
+        } catch (Exception e) {
+            e.printStackTrace();
+            return null;
+        }
     }
 
     /**
      * Creates hosts for the datacenter.
      */
-    public List<Host> configureHosts() {
+private List<Host> buildHosts() {
         List<Host> hosts = new ArrayList<>();
+
+        // Build each Host one-by-one
         for (int i = 0; i < numHosts; i++) {
             List<Pe> peList = new ArrayList<>();
             for (int p = 0; p < numPesPerHost; p++) {
-                peList.add(new PeSimple(peMips));
+                peList.add(new Pe(p, new PeProvisionerSimple(peMips))); // Processing element with ID and provisioner
             }
-            Host host = new HostSimple(ramPerHost, bwPerHost, storagePerHost, peList);
-            host.setRamProvisioner(new ResourceProvisionerSimple());
-            host.setBwProvisioner(new ResourceProvisionerSimple());
-            host.setVmScheduler(new VmSchedulerTimeShared());
-            host.setPowerModel(new PowerModelLinear(100, 0.7));
+            // Host with ID, provisioners, storage, PE list and VM scheduler
+            Host host = new Host(
+                i, // host ID
+                new RamProvisionerSimple(ramPerHost),
+                new BwProvisionerSimple(bwPerHost),
+                storagePerHost,
+                peList,
+                new VmSchedulerTimeShared(peList)
+            );
             hosts.add(host);
         }
         return hosts;
     }
 
-    /**
-     * Creates VMs configured per constructor parameters.
-     */
-    public List<Vm> configureVMs() {
+private List<Vm> buildVms() {
         List<Vm> vms = new ArrayList<>();
+        String vmm = "Xen"; // Virtual Machine Monitor
         for (int i = 0; i < numVMs; i++) {
-            Vm vm = new VmSimple(vmMips, vmPes);
-            vm.setRam(vmRam).setBw(vmBw).setSize(vmSize);
-            vm.setCloudletScheduler(new CloudletSchedulerTimeShared());
+            // Vm constructor: id, userId, mips, numberOfPes, ram, bw, size, vmm, cloudletScheduler
+            Vm vm = new Vm(
+                i, // VM ID
+                -1, // User ID (will be set by broker)
+                vmMips,
+                vmPes,
+                vmRam,
+                vmBw,
+                vmSize,
+                vmm,
+                new CloudletSchedulerTimeShared()
+            );
             vms.add(vm);
         }
         return vms;
+    }
+
+    /**
+     * Public factory that returns the list of Hosts for external callers.
+     */
+    public List<Host> createHosts() {
+        return buildHosts();
+    }
+
+    /**
+     * Public factory that returns the list of VMs for external callers.
+     */
+    public List<Vm> createVms() {
+        return buildVms();
     }
 }
 

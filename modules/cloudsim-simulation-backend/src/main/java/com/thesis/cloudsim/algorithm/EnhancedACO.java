@@ -1,16 +1,26 @@
 package com.thesis.cloudsim.algorithm;
 
-import org.cloudbus.cloudsim.cloudlets.Cloudlet;
-import org.cloudbus.cloudsim.vms.Vm;
+import org.cloudbus.cloudsim.Cloudlet;
+import org.cloudbus.cloudsim.Vm;
 
 import java.util.*;
 import java.util.concurrent.ThreadLocalRandom;
-import java.util.stream.IntStream;
+// IntStream removed – basic loops are easier for beginners
+import static com.thesis.cloudsim.algorithm.AlgorithmMetricUtils.*;
 
 /**
- * Enhanced Ant Colony Optimization (EACO) algorithm for CloudSim 7.0 G
- * Implements adaptive pheromone evaporation and load-based reinforcement
- * for multi-objective task scheduling optimization
+ * Enhanced Ant Colony Optimization (EACO).
+ * ----------------------------------------
+ * Maintains full algorithmic detail but is heavily commented so a newcomer
+ * understands the flow:
+ *   • initialiseMatrices()  – create pheromone & heuristic tables
+ *   • main loop            – constructSolutions → evaluate → updatePheromones
+ *   • bestSolution map     – final Cloudlet→VM assignment
+ *
+ * Complex maths (pheromone evaporation, diversity measure) is left intact to
+ * preserve research accuracy; rewriting them in simpler constructs would
+ * flatten the optimisation capability. Instead we guide the reader with
+ * comments and keep imports minimal.
  */
 public class EnhancedACO implements ISchedulingAlgorithm {
     
@@ -93,9 +103,9 @@ public class EnhancedACO implements ISchedulingAlgorithm {
                 Vm vm = vms.get(j);
                 
                 // Heuristic based on execution time and resource availability
-                double executionTime = cloudlet.getLength() / vm.getMips();
-                double vmRamCapacity = vm.getRam().getCapacity();
-                double hostRamCapacity = vm.getHost().getRamProvisioner().getCapacity();
+                double executionTime = cloudlet.getCloudletLength() / vm.getMips();
+                double vmRamCapacity = vm.getRam();
+                double hostRamCapacity = vm.getHost().getGuestRamProvisioner().getRam();
                 double resourceRatio = vmRamCapacity / hostRamCapacity;
                 
                 // Inverse of execution time with resource consideration
@@ -257,16 +267,16 @@ public class EnhancedACO implements ISchedulingAlgorithm {
     
     private double calculateFitness(Map<Cloudlet, Vm> schedule) {
         // Multi-objective fitness calculation (same as EPSO)
-        double makespan = calculateMakespan(schedule);
-        double cost = calculateCost(schedule);
-        double energy = calculateEnergy(schedule);
-        double loadBalance = calculateLoadBalance(schedule);
-        
+        double makespan = AlgorithmMetricUtils.makespan(schedule);
+        double cost = AlgorithmMetricUtils.enhancedCost(schedule, cloudlets, vms);
+        double energy = AlgorithmMetricUtils.energy(schedule);
+        double loadBalance = AlgorithmMetricUtils.loadBalance(schedule);
+
         // Normalize metrics
-        makespan = normalizeMetric(makespan, "makespan");
-        cost = normalizeMetric(cost, "cost");
-        energy = normalizeMetric(energy, "energy");
-        loadBalance = normalizeMetric(loadBalance, "loadBalance");
+        makespan = AlgorithmMetricUtils.normalise("makespan", makespan, cloudlets, vms);
+        cost = AlgorithmMetricUtils.normalise("enhancedCost", cost, cloudlets, vms);
+        energy = AlgorithmMetricUtils.normalise("energy", energy, cloudlets, vms);
+        loadBalance = AlgorithmMetricUtils.normalise("loadBalance", loadBalance, cloudlets, vms);
         
         // Weighted sum calculation
         double fitness = parameters.getDouble(AlgorithmParameters.MAKESPAN_WEIGHT) * makespan +
@@ -284,7 +294,7 @@ public class EnhancedACO implements ISchedulingAlgorithm {
             Cloudlet cloudlet = entry.getKey();
             Vm vm = entry.getValue();
             
-            double executionTime = cloudlet.getLength() / vm.getMips();
+            double executionTime = cloudlet.getCloudletLength() / vm.getMips();
             double currentFinish = vmFinishTimes.getOrDefault(vm, 0.0);
             vmFinishTimes.put(vm, currentFinish + executionTime);
         }
@@ -299,8 +309,8 @@ public class EnhancedACO implements ISchedulingAlgorithm {
             Cloudlet cloudlet = entry.getKey();
             Vm vm = entry.getValue();
             
-            double executionTime = cloudlet.getLength() / vm.getMips();
-            double hostRamCapacity = vm.getHost().getRamProvisioner().getCapacity();
+            double executionTime = cloudlet.getCloudletLength() / vm.getMips();
+            double hostRamCapacity = vm.getHost().getGuestRamProvisioner().getRam();
             double vmCostPerSecond = hostRamCapacity * 0.001;
             totalCost += executionTime * vmCostPerSecond;
         }
@@ -315,8 +325,9 @@ public class EnhancedACO implements ISchedulingAlgorithm {
             Cloudlet cloudlet = entry.getKey();
             Vm vm = entry.getValue();
             
-            double executionTime = cloudlet.getLength() / vm.getMips();
-            double powerConsumption = vm.getHost().getPowerModel().getPower(vm.getCpuPercentUsage());
+            double executionTime = cloudlet.getCloudletLength() / vm.getMips();
+            // Simplified power consumption calculation
+            double powerConsumption = 100.0; // Basic estimate
             totalEnergy += executionTime * powerConsumption;
         }
         
@@ -330,7 +341,7 @@ public class EnhancedACO implements ISchedulingAlgorithm {
             Cloudlet cloudlet = entry.getKey();
             Vm vm = entry.getValue();
             
-            double load = cloudlet.getLength() / vm.getMips();
+            double load = cloudlet.getCloudletLength() / vm.getMips();
             vmLoads.put(vm, vmLoads.getOrDefault(vm, 0.0) + load);
         }
         
@@ -347,17 +358,17 @@ public class EnhancedACO implements ISchedulingAlgorithm {
         
         switch (metricType) {
             case "makespan":
-                maxValue = cloudlets.stream().mapToDouble(Cloudlet::getLength).sum() / 
+                maxValue = cloudlets.stream().mapToDouble(Cloudlet::getCloudletLength).sum() / 
                           vms.stream().mapToDouble(Vm::getMips).min().orElse(1.0);
                 break;
             case "cost":
-                maxValue = cloudlets.stream().mapToDouble(Cloudlet::getLength).sum() * 0.1;
+                maxValue = cloudlets.stream().mapToDouble(Cloudlet::getCloudletLength).sum() * 0.1;
                 break;
             case "energy":
-                maxValue = cloudlets.stream().mapToDouble(Cloudlet::getLength).sum() * 100.0;
+                maxValue = cloudlets.stream().mapToDouble(Cloudlet::getCloudletLength).sum() * 100.0;
                 break;
             case "loadBalance":
-                maxValue = cloudlets.stream().mapToDouble(Cloudlet::getLength).sum();
+                maxValue = cloudlets.stream().mapToDouble(Cloudlet::getCloudletLength).sum();
                 break;
         }
         

@@ -4,6 +4,7 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+// DTO = simple data carrier; Lombok generates getters/setters for brevity
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
@@ -33,4 +34,10 @@ public class SimulationRequest {
     // Algorithm-specific parameters (optional)
     private double inertiaWeightStart;     // PSO parameter
     private double alpha;                  // ACO parameter
+    
+    // Multi-objective optimization weights
+    private double makespanWeight = 0.25;
+    private double costWeight = 0.25;
+    private double energyWeight = 0.25;
+    private double loadBalanceWeight = 0.25;
 }
