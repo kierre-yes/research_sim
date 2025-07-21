@@ -679,7 +679,35 @@ public class Datacenter extends SimEntity {
 			double fileTransferTime = predictFileTransferTime(cl.getRequiredFiles());
 
 			HostEntity host = getVmAllocationPolicy().getHost(vmId, userId);
+			if (host == null) {
+				Log.printlnConcat(getName(), ": Error - VM #", vmId, " for user ", userId, 
+						" is not allocated to any host. Cannot submit cloudlet #", cl.getCloudletId());
+				if (ack) {
+					int[] data = new int[3];
+					data[0] = getId();
+					data[1] = cl.getCloudletId();
+					data[2] = CloudSimTags.FALSE;
+					sendNow(cl.getUserId(), CloudActionTags.CLOUDLET_SUBMIT_ACK, data);
+				}
+				sendNow(cl.getUserId(), CloudActionTags.CLOUDLET_RETURN, cl);
+				return;
+			}
+			
 			GuestEntity vm = host.getGuest(vmId, userId);
+			if (vm == null) {
+				Log.printlnConcat(getName(), ": Error - VM #", vmId, " for user ", userId, 
+						" not found on host #", host.getId(), ". Cannot submit cloudlet #", cl.getCloudletId());
+				if (ack) {
+					int[] data = new int[3];
+					data[0] = getId();
+					data[1] = cl.getCloudletId();
+					data[2] = CloudSimTags.FALSE;
+					sendNow(cl.getUserId(), CloudActionTags.CLOUDLET_SUBMIT_ACK, data);
+				}
+				sendNow(cl.getUserId(), CloudActionTags.CLOUDLET_RETURN, cl);
+				return;
+			}
+			
 			CloudletScheduler scheduler = vm.getCloudletScheduler();
 			double estimatedFinishTime = scheduler.cloudletSubmit(cl, fileTransferTime);
 

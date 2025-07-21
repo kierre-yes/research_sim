@@ -1,18 +1,16 @@
 package com.thesis.cloudsim.algorithm;
 
-import org.cloudbus.cloudsim.cloudlets.Cloudlet;
-import org.cloudbus.cloudsim.cloudlets.CloudletSimple;
+import org.cloudbus.cloudsim.Cloudlet;
 import org.cloudbus.cloudsim.core.CloudSim;
-import org.cloudbus.cloudsim.hosts.Host;
-import org.cloudbus.cloudsim.hosts.HostSimple;
-import org.cloudbus.cloudsim.vms.Vm;
-import org.cloudbus.cloudsim.vms.VmSimple;
-import org.cloudbus.cloudsim.resources.Pe;
-import org.cloudbus.cloudsim.resources.PeSimple;
-import org.cloudbus.cloudsim.provisioners.ResourceProvisionerSimple;
-import org.cloudbus.cloudsim.schedulers.cloudlet.CloudletSchedulerTimeShared;
-import org.cloudbus.cloudsim.schedulers.vm.VmSchedulerTimeShared;
-import org.cloudbus.cloudsim.utilizationmodels.UtilizationModelFull;
+import org.cloudbus.cloudsim.Host;
+import org.cloudbus.cloudsim.Vm;
+import org.cloudbus.cloudsim.Pe;
+import org.cloudbus.cloudsim.provisioners.PeProvisionerSimple;
+import org.cloudbus.cloudsim.provisioners.RamProvisionerSimple;
+import org.cloudbus.cloudsim.provisioners.BwProvisionerSimple;
+import org.cloudbus.cloudsim.CloudletSchedulerTimeShared;
+import org.cloudbus.cloudsim.VmSchedulerTimeShared;
+import org.cloudbus.cloudsim.UtilizationModelFull;
 import org.cloudbus.cloudsim.power.models.PowerModel;
 import org.cloudbus.cloudsim.power.models.PowerModelLinear;
 
@@ -148,10 +146,9 @@ public class AlgorithmTest {
             long fileSize = 100 + (long)(Math.random() * 900); // 100 to 1000 bytes
             long outputSize = 50 + (long)(Math.random() * 450); // 50 to 500 bytes
             
-            Cloudlet cloudlet = new CloudletSimple(i, length, 1);
-            cloudlet.setFileSize(fileSize);
-            cloudlet.setOutputSize(outputSize);
-            cloudlet.setUtilizationModel(new UtilizationModelFull());
+            Cloudlet cloudlet = new Cloudlet(i, length, 1, fileSize, outputSize, 
+                new UtilizationModelFull(), new UtilizationModelFull(), new UtilizationModelFull());
+            cloudlet.setUserId(0);
             
             cloudlets.add(cloudlet);
         }
@@ -168,11 +165,7 @@ public class AlgorithmTest {
             long ram = 512 + (long)(Math.random() * 1536); // 512 to 2048 MB
             long storage = 1000 + (long)(Math.random() * 9000); // 1GB to 10GB
             
-            Vm vm = new VmSimple(i, mips, 1);
-            vm.setRam(ram);
-            vm.setBw(100); // 100 Mbps bandwidth
-            vm.setSize(storage);
-            vm.setCloudletScheduler(new CloudletSchedulerTimeShared());
+            Vm vm = new Vm(i, -1, mips, 1, (int)ram, 100, storage, "Xen", new CloudletSchedulerTimeShared());
             
             // Create a simple host for the VM
             Host host = createSampleHost(i);
@@ -186,17 +179,17 @@ public class AlgorithmTest {
     
     private static Host createSampleHost(int id) {
         List<Pe> peList = new ArrayList<>();
-        peList.add(new PeSimple(1000 + (long)(Math.random() * 2000))); // 1000 to 3000 MIPS
+        int peMips = 1000 + (int)(Math.random() * 2000); // 1000 to 3000 MIPS
+        peList.add(new Pe(0, new PeProvisionerSimple(peMips)));
         
-        Host host = new HostSimple(4096, 10000, 100000, peList);
-        host.setId(id);
-        host.setRamProvisioner(new ResourceProvisionerSimple());
-        host.setBwProvisioner(new ResourceProvisionerSimple());
-        host.setVmScheduler(new VmSchedulerTimeShared());
-        
-        // Set a simple power model
-        PowerModel powerModel = new PowerModelLinear(100, 0.7); // 100W max, 70% min
-        host.setPowerModel(powerModel);
+        Host host = new Host(
+            id,
+            new RamProvisionerSimple(4096),
+            new BwProvisionerSimple(10000),
+            100000,
+            peList,
+            new VmSchedulerTimeShared(peList)
+        );
         
         return host;
     }
