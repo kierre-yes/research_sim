@@ -39,4 +39,9 @@
             <appender-ref ref="CONSOLE"/>
         </root>
     </springProfile>
+    
+    <!-- Default root logger when no profile is active -->
+    <root level="INFO">
+        <appender-ref ref="CONSOLE"/>
+    </root>
 </configuration>

@@ -39,15 +39,29 @@ public class MatlabIntegrationService {
     }
 
     private synchronized void ensureEngine() {
-        if (engine != null) return;
+        if (engine != null) {
+            logger.debug("MATLAB engine already initialized");
+            return;
+        }
+        
+        logger.info("Attempting to connect to MATLAB engine...");
         try {
             // Preferred: connect to pre-started shared engine
+            logger.debug("Trying to connect to shared MATLAB engine 'thesisEngine'...");
             engine = MatlabEngine.connectMatlab("thesisEngine");
+            logger.info("Successfully connected to shared MATLAB engine");
         } catch (Exception connectEx) {
+            logger.warn("Failed to connect to shared MATLAB engine: {}", connectEx.getMessage());
+            logger.debug("Connection error details:", connectEx);
+            
             try {
                 // Fallback: launch a new MATLAB process (takes ~50 s)
+                logger.info("Starting new MATLAB engine instance...");
                 engine = MatlabEngine.startMatlab();
+                logger.info("Successfully started new MATLAB engine");
             } catch (Exception startEx) {
+                logger.error("Failed to start MATLAB engine: {}", startEx.getMessage());
+                logger.error("Stack trace:", startEx);
                 throw new RuntimeException("Unable to start or connect to MATLAB engine", startEx);
             }
         }
@@ -62,25 +76,49 @@ public class MatlabIntegrationService {
     }
     
     public ProcessedResults processResults(SimulationResults results, String algorithmName) {
+        logger.info("Processing results with MATLAB for algorithm: {}", algorithmName);
+        
         try {
             ensureEngine();
+            
             // Convert Java results to MATLAB-compatible structure
             String runId = UUID.randomUUID().toString();
+            logger.debug("Generated run ID: {}", runId);
             
             // Create MATLAB struct with all results data
+            logger.debug("Putting variables into MATLAB workspace...");
             engine.putVariable("runId", runId);
             engine.putVariable("algorithmName", algorithmName);
             
             // Pass summary metrics
+            logger.debug("Creating MATLAB results structure...");
             engine.eval("results = struct();");
             engine.eval("results.summary = struct();");
-            engine.putVariable("makespan", results.getSummary().getMakespan());
-            engine.putVariable("avgResponseTime", results.getSummary().getResponseTime());
-            engine.putVariable("resourceUtilization", results.getSummary().getResourceUtilization());
-            engine.putVariable("imbalanceDegree", results.getSummary().getLoadBalance());
+            
+            logger.debug("Passing summary metrics to MATLAB...");
+            double makespan = results.getSummary().getMakespan();
+            double responseTime = results.getSummary().getResponseTime();
+            double utilization = results.getSummary().getResourceUtilization();
+            double loadBalance = results.getSummary().getLoadBalance();
+            
+            // Convert load balance to percentage (100 - normalized imbalance)
+            // The raw loadBalance is actually an imbalance measure (lower is better)
+            // So we convert it to a balance percentage where higher is better
+            double balancePercentage = (1.0 - loadBalance) * 100.0;
+            double clampedLoadBalance = Math.max(0.0, Math.min(100.0, balancePercentage));
+            
+            logger.debug("Makespan: {}, Response Time: {}, Utilization: {}, Load Balance: {}% (imbalance: {})", 
+                    makespan, responseTime, utilization, clampedLoadBalance, loadBalance);
+            
+            engine.putVariable("makespan", makespan);
+            engine.putVariable("avgResponseTime", responseTime);
+            engine.putVariable("resourceUtilization", utilization);
+            engine.putVariable("loadBalancePercentage", clampedLoadBalance);
+            engine.putVariable("imbalanceDegree", loadBalance); // Add the raw imbalance degree for MATLAB
             engine.eval("results.summary.makespan = makespan;");
             engine.eval("results.summary.averageResponseTime = avgResponseTime;");
             engine.eval("results.summary.resourceUtilization = resourceUtilization;");
+            engine.eval("results.summary.loadBalancePercentage = loadBalancePercentage;");
             engine.eval("results.summary.imbalanceDegree = imbalanceDegree;");
             
             // Calculate additional metrics
@@ -113,21 +151,76 @@ public class MatlabIntegrationService {
             }
             
             // Use the simpler generateComparisonPlots for now
-            engine.eval("plotPaths = generateComparisonPlots(avgResponseTime, makespan, runId);");
+            logger.info("Calling MATLAB generateComparisonPlots function...");
+            try {
+                // First check if the script exists
+                engine.eval("exist('generateComparisonPlots', 'file')");
+                Object scriptExists = engine.getVariable("ans");
+                logger.debug("generateComparisonPlots exists check result: {}", scriptExists);
+                
+                // Add the script path if needed
+                engine.eval("addpath('src/main/resources/matlab');");
+                logger.debug("Added MATLAB script path");
+                
+                engine.eval("plotPaths = generateComparisonPlots(avgResponseTime, makespan, runId);");
+                logger.info("MATLAB function executed successfully");
+            } catch (Exception matlabEx) {
+                logger.error("Error executing MATLAB script: {}", matlabEx.getMessage());
+                logger.error("MATLAB execution stack trace:", matlabEx);
+                throw matlabEx;
+            }
             
             // Retrieve JSON string with chart-ready structure
-            String json = engine.getVariable("plotJson");
+            logger.debug("Retrieving plot JSON from MATLAB...");
+            String json = null;
+            try {
+                json = engine.getVariable("plotJson");
+                logger.debug("Retrieved JSON: {}", json != null ? "(non-null)" : "null");
+            } catch (Exception varEx) {
+                logger.error("Error retrieving plotJson variable: {}", varEx.getMessage());
+                logger.warn("Attempting to check if plotJson exists in workspace...");
+                engine.eval("exist('plotJson', 'var')");
+                Object exists = engine.getVariable("ans");
+                logger.debug("plotJson exists: {}", exists);
+                throw varEx;
+            }
+            
             // Reuse ObjectMapper instance
-            java.util.Map<String,Object> plotMap = objectMapper
-                    .readValue(json, new com.fasterxml.jackson.core.type.TypeReference<java.util.Map<String,Object>>() {});
+            java.util.Map<String,Object> plotMap = null;
+            if (json != null) {
+                try {
+                    plotMap = objectMapper
+                            .readValue(json, new com.fasterxml.jackson.core.type.TypeReference<java.util.Map<String,Object>>() {});
+                    logger.debug("Successfully parsed plot JSON");
+                } catch (Exception parseEx) {
+                    logger.error("Error parsing JSON from MATLAB: {}", parseEx.getMessage());
+                    logger.debug("JSON content: {}", json);
+                    throw parseEx;
+                }
+            } else {
+                logger.warn("plotJson is null, creating empty plot map");
+                plotMap = new java.util.HashMap<>();
+            }
 
-            return ProcessedResults.builder()
+            ProcessedResults processedResults = ProcessedResults.builder()
                     .simulationId(runId)
                     .plotData(plotMap)
                     .rawResults(results)
                     .build();
+            
+            logger.info("Successfully processed results with MATLAB for run ID: {}", runId);
+            return processedResults;
+            
         } catch (Exception e) {
-            throw new RuntimeException("MATLAB processing failed", e);
+            logger.error("MATLAB processing failed: {}", e.getMessage());
+            logger.error("Full stack trace:", e);
+            
+            // Check if it's a specific MATLAB error
+            if (e.getMessage() != null && e.getMessage().contains("MATLAB")) {
+                throw new RuntimeException("MATLAB processing error: " + e.getMessage(), e);
+            } else {
+                throw new RuntimeException("MATLAB processing failed", e);
+            }
         }
     }
 

@@ -6,7 +6,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Interface for scheduling algorithms in CloudSim 7.0 G
+ * Interface for scheduling algorithms
  * Provides contract for task scheduling optimization algorithms
  */
 public interface ISchedulingAlgorithm {

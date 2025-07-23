@@ -1,0 +1,23 @@
+{
+  "optimizationAlgorithm": "EPSO",
+  "numHosts": 3,
+  "numVMs": 6,
+  "numPesPerHost": 4,
+  "peMips": 2000,
+  "ramPerHost": 8192,
+  "bwPerHost": 10000,
+  "storagePerHost": 100000,
+  "vmMips": 1000,
+  "vmPes": 2,
+  "vmRam": 2048,
+  "vmBw": 1000,
+  "vmSize": 10000,
+  "vmScheduler": "TimeShared",
+  "numCloudlets": 15,
+  "workloadType": "Random",
+  "useDefaultWorkload": true,
+  "makespanWeight": 0.25,
+  "costWeight": 0.25,
+  "energyWeight": 0.25,
+  "loadBalanceWeight": 0.25
+}

@@ -148,5 +148,28 @@ private List<Vm> buildVms() {
     public List<Vm> createVms() {
         return buildVms();
     }
+    
+    /**
+     * Creates VMs with a specific broker ID
+     */
+    public List<Vm> createVms(int brokerId) {
+        List<Vm> vms = new ArrayList<>();
+        String vmm = "Xen"; // Virtual Machine Monitor
+        for (int i = 0; i < numVMs; i++) {
+            Vm vm = new Vm(
+                i, // VM ID
+                brokerId, // User ID (broker ID)
+                vmMips,
+                vmPes,
+                vmRam,
+                vmBw,
+                vmSize,
+                vmm,
+                new CloudletSchedulerTimeShared()
+            );
+            vms.add(vm);
+        }
+        return vms;
+    }
 }
 

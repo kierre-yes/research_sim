@@ -23,6 +23,7 @@ public class CustomSchedulingBroker extends DatacenterBroker {
 
     private String algorithmName;
     private AlgorithmParameters parameters;
+    private ISchedulingAlgorithm lastUsedAlgorithm;
 
     public CustomSchedulingBroker(String name, String algorithmName, AlgorithmParameters parameters) throws Exception {
         super(name);
@@ -48,6 +49,7 @@ public class CustomSchedulingBroker extends DatacenterBroker {
     private Map<Cloudlet, Vm> customCloudletMapper(List<Cloudlet> cloudletList, List<Vm> vmList) {
         // 1) Create an algorithm instance each time we need a fresh scheduling run
         ISchedulingAlgorithm algorithm = AlgorithmFactory.createAlgorithm(algorithmName);
+        this.lastUsedAlgorithm = algorithm; // Store for later access
 
         // 2) Execute the optimisation algorithm to obtain a mapping
         Map<Cloudlet, Vm> schedule = algorithm.schedule(cloudletList, vmList, parameters);
@@ -99,7 +101,11 @@ public class CustomSchedulingBroker extends DatacenterBroker {
                     }
                     
                     // Send cloudlet to datacenter
-                    int datacenterId = getVmsToDatacentersMap().get(vm.getId());
+                    Integer datacenterId = getVmsToDatacentersMap().get(vm.getId());
+                    if (datacenterId == null) {
+                        System.err.println("[ERROR] No datacenter mapping found for VM " + vm.getId());
+                        continue;
+                    }
                     System.out.println("[DEBUG] Sending cloudlet " + cloudlet.getCloudletId() + 
                                      " to datacenter " + datacenterId + " for VM " + vm.getId());
                     sendNow(datacenterId, CloudActionTags.CLOUDLET_SUBMIT, cloudlet);
@@ -128,5 +134,12 @@ public class CustomSchedulingBroker extends DatacenterBroker {
     
     public List<Cloudlet> getCloudletFinishedList() {
         return getCloudletReceivedList();
+    }
+    
+    /**
+     * Get the last used algorithm instance for accessing metrics
+     */
+    public ISchedulingAlgorithm getLastUsedAlgorithm() {
+        return lastUsedAlgorithm;
     }
 }
