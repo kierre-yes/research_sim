@@ -1,73 +1,243 @@
-# CloudSim: A Framework For Modeling And Simulation Of Cloud Computing Infrastructures And Services #
+# CloudSim Load Balancing Backend with EPSO & EACO Algorithms
 
-Cloud Computing is the leading approach for delivering reliable, secure, fault-tolerant, sustainable, and scalable computational services. Hence timely, repeatable, and controllable methodologies for performance evaluation of new cloud applications and policies before their actual development are required. Because utilization of real testbeds limits the experiments to the scale of the testbed and makes the reproduction of results an extremely difficult undertaking, simulation may be used.
+This is an enhanced CloudSim 7.0 backend implementation featuring Enhanced Particle Swarm Optimization (EPSO) and Enhanced Ant Colony Optimization (EACO) algorithms for cloud task scheduling. The system includes MATLAB integration for advanced visualization and supports multi-objective optimization for makespan, cost, energy consumption, and load balancing.
 
-CloudSim's goal is to provide a generalized and extensible simulation framework that enables modeling, simulation, and experimentation of emerging Cloud Computing infrastructures and application services, allowing its users to focus on specific system design issues that they want to investigate, without getting concerned about the low level details related to Cloud-Based infrastructures and services.
+## 🚀 Features
 
-CloudSim is developed in [the Cloud Computing and Distributed Systems (CLOUDS) Laboratory](http://cloudbus.org/), at [the Computer Science and Software Engineering Department](http://www.csse.unimelb.edu.au/) of [the University of Melbourne](http://www.unimelb.edu.au/).
+- **Enhanced Scheduling Algorithms**: EPSO and EACO implementations with multi-objective optimization
+- **RESTful API**: Spring Boot backend for easy integration with frontend applications
+- **MATLAB Visualization**: Advanced plots and analysis through MATLAB integration
+- **Real-time Metrics**: Comprehensive performance metrics including makespan, cost, energy, and load balance
+- **Scalable Architecture**: Supports various datacenter configurations and workload types
 
-More information can be found on the [CloudSim's web site](http://cloudbus.org/cloudsim/).
+## 📋 Prerequisites
 
+- Java JDK 21 or higher
+- Maven 3.8+
+- MATLAB R2021a or higher (optional, for advanced visualizations)
+- 8GB RAM minimum (16GB recommended)
+- Windows 10/11, Linux, or macOS
 
-# Main features #
+## 🛠️ Backend Setup
 
-  * Support for modeling and simulation of large scale Cloud Computing data centers
-  * Support for modeling and simulation of virtualized server hosts, with customizable policies for provisioning host resources to Virtual Machines
-  * Support for modeling and simulation of application containers
-  * Support for modeling and simulation of energy-aware computational resources
-  * Support for modeling and simulation of data center network topologies and message-passing applications
-  * Support for modeling and simulation of federated clouds
-  * Support for dynamic insertion of simulation elements, stop and resume of simulation
-  * Support for user-defined policies for allocation of hosts to Virtual Machines and policies for allocation of host resources to Virtual Machines
+### Step 1: Clone the Repository
+```bash
+git clone https://github.com/kierre-yes/research_sim.git
+cd cloudsim-7.0
+```
+    
+### Step 2: Install Java JDK 21
 
+**Windows:**
+1. Download JDK 21 from [Oracle's official website](https://www.oracle.com/java/technologies/downloads/#java21)
+2. Run the installer and follow the installation wizard
+3. Add Java to your PATH environment variable
+4. Verify installation:
+   ```cmd
+   java -version
+   ```
 
-# Download #
-
-Either clone the repository or download a [release](https://github.com/Cloudslab/cloudsim/releases). The release package contains all the source code, examples, jars, and API html files.
-
-# Installation
-**Windows**
-1) Install Java JDK21 on your system from the [official website](https://www.oracle.com/in/java/technologies/downloads/#java21) as shown in [JDK installation instructions](https://docs.oracle.com/en/java/javase/23/install/overview-jdk-installation.html)
-2) Install Maven as shown on the [official website](https://maven.apache.org/install.html)
-4) Compile and Run tests using the command prompt:
-  ```prompt
-  mvn clean package
-  ```
-5) Run an example (e.g., CloudSimExample1) in cloudsim-examples using the command prompt:
-```prompt
-mvn exec:java -pl modules/cloudsim-examples/ -Dexec.mainClass=org.cloudbus.cloudsim.examples.CloudSimExample1
+**Linux (Ubuntu/Debian):**
+```bash
+sudo apt update
+sudo apt install openjdk-21-jdk
+sudo update-java-alternatives --set java-1.21.0-openjdk-amd64
+java -version
 ```
 
-**Linux**
-  1) Install Java JDK21 on your system:
-  - On Debian-based Linux & Windows WSL2: 
-    ```bash
-    sudo apt install openjdk-21-jdk
-    ```
-  - On Red Hat-based Linux:  
-    ```bash  
-    sudo yum install java-21-openjdk
-    ```
-  2) Set Java JDK21 as default: 
-  - On Debian-based Linux & Windows WSL2:
-    ```bash
-    sudo update-java-alternatives --set java-1.21.0-openjdk-amd64
-    ```
-  - On Red Hat-based Linux: 
-    ```bash
-    sudo update-alternatives --config 'java'
-    ```
-  3) Install Maven as shown on the [Official Website](https://maven.apache.org/install.html)
-  4) Compile and run tests using the terminal:
-  ```bash
-  mvn clean package
-  ```
-  5) Run an example (e.g., CloudSimExample1) in cloudsim-examples using the terminal:
-  ```bash
-  mvn exec:java -pl modules/cloudsim-examples/ -Dexec.mainClass=org.cloudbus.cloudsim.examples.CloudSimExample1
-  ```
+### Step 3: Install Maven
 
-  **Suggestion:** Use an IDE such as IDEA Intellij to faciliate steps 4) and 5)
+**Windows:**
+1. Download Maven from [Apache Maven website](https://maven.apache.org/download.cgi)
+2. Extract to a directory (e.g., `C:\Program Files\Apache\maven`)
+3. Add Maven's `bin` directory to your PATH
+4. Verify installation:
+   ```cmd
+   mvn -version
+   ```
+
+**Linux:**
+```bash
+sudo apt install maven
+mvn -version
+```
+
+### Step 4: Build the Backend
+```bash
+cd modules/cloudsim-simulation-backend
+mvn clean install
+```
+
+### Step 5: Run the Backend Server
+```bash
+mvn spring-boot:run
+```
+
+The server will start on `http://localhost:8081`
+
+## 🧮 MATLAB Setup (Optional but Recommended)
+
+### Step 1: Install MATLAB
+1. Download MATLAB from [MathWorks website](https://www.mathworks.com/downloads/)
+2. Install with the following toolboxes:
+   - MATLAB Compiler
+   - MATLAB Engine API for Java
+   - Statistics and Machine Learning Toolbox (optional)
+
+### Step 2: Configure MATLAB Engine for Java
+
+**Windows:**
+1. Open Command Prompt as Administrator
+2. Navigate to MATLAB root directory:
+   ```cmd
+   cd "C:\Program Files\MATLAB\R2023b\extern\engines\java"
+   ```
+3. Install the MATLAB Engine:
+   ```cmd
+   java -cp .\engine.jar com.mathworks.engine.MatlabEngine
+   ```
+
+**Linux:**
+```bash
+cd /usr/local/MATLAB/R2023b/extern/engines/java
+sudo java -cp ./engine.jar com.mathworks.engine.MatlabEngine
+```
+
+### Step 3: Set MATLAB Environment Variables
+
+**Windows:**
+1. Add to System Environment Variables:
+   - Variable: `MATLAB_ROOT`
+   - Value: `C:\Program Files\MATLAB\R2023b`
+   
+2. Add to PATH:
+   - `%MATLAB_ROOT%\bin`
+   - `%MATLAB_ROOT%\extern\engines\java\lib`
+
+**Linux:**
+Add to `~/.bashrc` or `~/.zshrc`:
+```bash
+export MATLAB_ROOT=/usr/local/MATLAB/R2023b
+export PATH=$PATH:$MATLAB_ROOT/bin
+export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$MATLAB_ROOT/extern/engines/java/lib
+```
+
+### Step 4: Start MATLAB Shared Session
+
+For better performance, start a shared MATLAB session before running the backend:
+
+**Windows:**
+```matlab
+% In MATLAB Command Window
+matlab.engine.shareEngine('thesisEngine')
+```
+
+**Linux:**
+```bash
+matlab -r "matlab.engine.shareEngine('thesisEngine')"
+```
+
+### Step 5: Configure Backend for MATLAB
+
+The backend will automatically detect and use MATLAB if available. To disable MATLAB integration, set in `application.properties`:
+```properties
+matlab.enabled=false
+```
+
+## 📡 API Endpoints
+
+### Run Simulation
+```http
+POST /api/run
+Content-Type: application/json
+
+{
+  "optimizationAlgorithm": "EPSO",
+  "numHosts": 10,
+  "numVMs": 20,
+  "numCloudlets": 100,
+  "makespanWeight": 0.25,
+  "costWeight": 0.25,
+  "energyWeight": 0.25,
+  "loadBalanceWeight": 0.25
+}
+```
+
+### Run Simulation with MATLAB Plots
+```http
+POST /api/simulation/with-plots
+Content-Type: application/json
+```
+
+## 🧪 Testing the Setup
+
+### Test Basic Functionality
+```bash
+# Run unit tests
+mvn test
+
+# Run a simple simulation
+curl -X POST http://localhost:8081/api/run \
+  -H "Content-Type: application/json" \
+  -d '{"optimizationAlgorithm": "EPSO", "numHosts": 5, "numVMs": 10, "numCloudlets": 50}'
+```
+
+### Test MATLAB Integration
+```bash
+curl -X POST http://localhost:8081/api/simulation/with-plots \
+  -H "Content-Type: application/json" \
+  -d '{"optimizationAlgorithm": "EACO", "numHosts": 10, "numVMs": 20, "numCloudlets": 100}'
+```
+
+## 🐛 Troubleshooting
+
+### Common Issues
+
+1. **MATLAB Engine Connection Failed**
+   - Ensure MATLAB is installed and licensed
+   - Check if MATLAB Engine for Java is properly installed
+   - Verify environment variables are set correctly
+   - Try starting a shared MATLAB session manually
+
+2. **Out of Memory Errors**
+   - Increase JVM heap size in Maven:
+     ```bash
+     export MAVEN_OPTS="-Xmx4g -Xms2g"
+     ```
+
+3. **Port Already in Use**
+   - Change the port in `application.properties`:
+     ```properties
+     server.port=8082
+     ```
+
+4. **VM Allocation Failed**
+   - Ensure numVMs ≤ numHosts × 2 (default configuration)
+   - Adjust host resources in the simulation request
+
+### Debug Mode
+
+Enable debug logging by adding to `application.properties`:
+```properties
+logging.level.com.thesis.cloudsim=DEBUG
+```
+
+## 📊 Understanding the Metrics
+
+- **Makespan**: Total time to complete all tasks
+- **Response Time**: Average time from task submission to completion
+- **Resource Utilization**: Percentage of available resources being used
+- **Energy Consumption**: Total energy consumed (in Wh)
+- **Load Balance**: Distribution of tasks across VMs (0-100%, higher is better)
+- **Fitness Value**: Multi-objective optimization score
+
+## 🤝 Contributing
+
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
+3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
+4. Push to the branch (`git push origin feature/AmazingFeature`)
+5. Open a Pull Request
 
 # Preferred Publication #
   * Remo Andreoli, Jie Zhao, Tommaso Cucinotta, and Rajkumar Buyya, [CloudSim 7G: An Integrated Toolkit for Modeling and Simulation of Future Generation Cloud Computing Environments](https://onlinelibrary.wiley.com/doi/10.1002/spe.3413), Software: Practice and Experience, 2025.

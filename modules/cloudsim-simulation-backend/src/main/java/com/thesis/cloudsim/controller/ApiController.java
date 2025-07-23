@@ -17,6 +17,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.Map;
+import java.util.HashMap;
 
 @RestController
 @RequestMapping("/api")
@@ -36,10 +37,17 @@ public class ApiController {
     }
 
     @PostMapping("/run")
-    public ResponseEntity<SimulationResults> runSimulation(@RequestBody SimulationRequest request) {
+    public ResponseEntity<?> runSimulation(@RequestBody SimulationRequest request) {
         try {
             // Pick algorithm instance based on simple string comparison (no reflection)
-            ISchedulingAlgorithm algorithm = "EPSO".equalsIgnoreCase(request.getOptimizationAlgorithm()) ? epso : eaco;
+            ISchedulingAlgorithm algorithm;
+            if ("EPSO".equalsIgnoreCase(request.getOptimizationAlgorithm())) {
+                algorithm = epso;
+                System.out.println("[DEBUG] Using EPSO algorithm for simulation");
+            } else {
+                algorithm = eaco;
+                System.out.println("[DEBUG] Using EACO algorithm for simulation");
+            }
 
             // Create the simulation manager that builds the datacenter and runs CloudSim
             EnhancedSimulationManager manager = new EnhancedSimulationManager(algorithm, request);
@@ -49,7 +57,12 @@ public class ApiController {
             return ResponseEntity.ok(results);
         } catch (Exception e) {
             e.printStackTrace();
-            return ResponseEntity.badRequest().build();
+            // Return detailed error message in response body
+            Map<String, String> errorResponse = new HashMap<>();
+            errorResponse.put("error", e.getClass().getSimpleName());
+            errorResponse.put("message", e.getMessage());
+            errorResponse.put("algorithm", request.getOptimizationAlgorithm());
+            return ResponseEntity.badRequest().body(errorResponse);
         }
     }
 

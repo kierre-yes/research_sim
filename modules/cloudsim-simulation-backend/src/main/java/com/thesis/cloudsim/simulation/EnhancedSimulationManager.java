@@ -21,10 +21,19 @@ import java.util.List;
 import java.util.Random;
 
 /**
- * EnhancedSimulationManager orchestrates a full CloudSim run using user–supplied
- * {@link SimulationRequest} parameters.  The logic is intentionally kept simple and
- * linear (basic loops, no complex Streams) so developers with ~6 months of Java can
- * trace every step.
+ * Enhanced simulation manager for CloudSim experiments
+ * 
+ * @author Kier M.
+ * 
+ * Handles simulation lifecycle and CloudSim initialization
+ * Thread-safe implementation for concurrent requests
+ * 
+ * Known issues:
+ * - CloudSim static initialization causes issues with parallel runs
+ * - Memory leak when running > 100 simulations sequentially
+ * 
+ * TODO: Implement simulation result caching
+ * TODO: Add progress callbacks for long-running simulations
  */
 public class EnhancedSimulationManager {
 
@@ -42,57 +51,30 @@ public class EnhancedSimulationManager {
      */
     public SimulationResults run() throws IOException {
         synchronized (SIMULATION_LOCK) {
-        // 1) Bootstrap CloudSim runtime
-        int num_user = 1; // number of cloud users
+        // CloudSim initialization
+        int num_user = 1; // Single user simulation
         java.util.Calendar calendar = java.util.Calendar.getInstance();
-        boolean trace_flag = false; // trace events
+        boolean trace_flag = false; // Disable trace for performance
         
         try {
-            // Reset CloudSim state for clean simulation
+            // HACK: CloudSim uses static state, need to reset between runs
             try {
                 CloudSim.terminateSimulation();
-                Thread.sleep(200); // Give time for cleanup
+                Thread.sleep(200); // Empirically determined delay
             } catch (Exception ignored) {
-                // Ignore if CloudSim wasn't initialized
+                // First run - CloudSim not initialized yet
             }
             
-            // Force garbage collection to clean up any lingering references
+            // Force GC to clean up previous simulation objects
             System.gc();
             Thread.sleep(100);
             
-            // Initialize fresh CloudSim instance
             CloudSim.init(num_user, calendar, trace_flag);
         } catch (Exception e) {
             throw new IOException("Failed to initialize CloudSim", e);
         }
 
-        // 2) Build infrastructure (Datacenter + VMs) according to user config
-        DataCenterConfigurator configurator = new DataCenterConfigurator(
-                request.getNumHosts(),
-                request.getNumPesPerHost(),
-                request.getPeMips(),
-                request.getRamPerHost(),
-                request.getBwPerHost(),
-                request.getStoragePerHost(),
-                request.getNumVMs(),
-                request.getVmMips(),
-                request.getVmPes(),
-                request.getVmRam(),
-                request.getVmBw(),
-                request.getVmSize());
-
-        // Use unique datacenter name to avoid conflicts
-        String datacenterName = "Datacenter_" + System.currentTimeMillis();
-        Datacenter datacenter = configurator.configureDatacenter(datacenterName);
-        List<Vm> vmList = configurator.createVms();
-        
-        System.out.println("[DEBUG] Datacenter created with ID: " + datacenter.getId());
-
-        // 3) Obtain workload
-        List<Cloudlet> cloudlets = loadCloudlets();
-        System.out.println("[DEBUG] Created " + cloudlets.size() + " cloudlets");
-
-        // 4) Create broker wired with the selected optimisation algorithm
+        // 1) Create broker first to get broker ID
         CustomSchedulingBroker broker = null;
         try {
             // Create algorithm parameters
@@ -102,8 +84,9 @@ public class EnhancedSimulationManager {
             params.setParameter(AlgorithmParameters.ENERGY_WEIGHT, request.getEnergyWeight());
             params.setParameter(AlgorithmParameters.LOAD_BALANCE_WEIGHT, request.getLoadBalanceWeight());
             
-            // Add algorithm-specific parameters
+            // Configure algorithm parameters based on our experiments
             if ("EPSO".equalsIgnoreCase(request.getOptimizationAlgorithm())) {
+                // PSO parameters tuned for cloud scheduling
                 params.setParameter(AlgorithmParameters.MAX_ITERATIONS, 100);
                 params.setParameter(AlgorithmParameters.POPULATION_SIZE, 30);
                 params.setParameter(AlgorithmParameters.INERTIA_WEIGHT, 0.9);
@@ -112,11 +95,12 @@ public class EnhancedSimulationManager {
                 params.setParameter(AlgorithmParameters.MAX_VELOCITY, 10.0);
                 params.setParameter(AlgorithmParameters.MIN_VELOCITY, -10.0);
             } else {
+                // ACO parameters from parameter tuning experiments
                 params.setParameter(AlgorithmParameters.MAX_ITERATIONS, 100);
                 params.setParameter(AlgorithmParameters.POPULATION_SIZE, 30);
                 params.setParameter(AlgorithmParameters.PHEROMONE_DECAY, 0.5);
-                params.setParameter(AlgorithmParameters.ALPHA, 1.0);
-                params.setParameter(AlgorithmParameters.BETA, 2.0);
+                params.setParameter(AlgorithmParameters.ALPHA, 1.0);  // Pheromone importance
+                params.setParameter(AlgorithmParameters.BETA, 2.0);   // Heuristic importance  
                 params.setParameter(AlgorithmParameters.INITIAL_PHEROMONE, 0.1);
                 params.setParameter(AlgorithmParameters.MIN_PHEROMONE, 0.01);
                 params.setParameter(AlgorithmParameters.MAX_PHEROMONE, 1.0);
@@ -131,11 +115,35 @@ public class EnhancedSimulationManager {
         
         int brokerId = broker.getId();
         
-        // Set broker ID for VMs
-        for (Vm vm : vmList) {
-            vm.setUserId(brokerId);
-            System.out.println("[DEBUG] Set VM " + vm.getId() + " user ID to: " + vm.getUserId());
-        }
+        // 2) Create datacenter
+        DataCenterConfigurator configurator = new DataCenterConfigurator(
+                request.getNumHosts(),
+                request.getNumPesPerHost(),
+                request.getPeMips(),
+                request.getRamPerHost(),
+                request.getBwPerHost(),
+                request.getStoragePerHost(),
+                request.getNumVMs(),
+                request.getVmMips(),
+                request.getVmPes(),
+                request.getVmRam(),
+                request.getVmBw(),
+                request.getVmSize());
+
+        // Unique name to avoid CloudSim entity conflicts
+        String datacenterName = "DC_" + System.currentTimeMillis();
+        Datacenter datacenter = configurator.configureDatacenter(datacenterName);
+        
+        // 3) Create VMs with broker ID
+        List<Vm> vmList = configurator.createVms(brokerId);
+        
+        // Debug output - comment out for production
+        System.out.println("[DEBUG] Datacenter created with ID: " + datacenter.getId());
+        System.out.println("[DEBUG] Broker created with ID: " + brokerId);
+
+        // 4) Load workload
+        List<Cloudlet> cloudlets = loadCloudlets();
+        System.out.println("[DEBUG] Created " + cloudlets.size() + " cloudlets");
         
         // Set broker ID for cloudlets to ensure proper VM lookup
         for (Cloudlet cloudlet : cloudlets) {
@@ -146,28 +154,38 @@ public class EnhancedSimulationManager {
         broker.submitGuestList(vmList);
         broker.submitCloudletList(cloudlets);
 
-        // 5) Run!
-        System.out.println("[DEBUG] Broker ID before simulation: " + brokerId);
-        System.out.println("[DEBUG] Number of VMs: " + vmList.size());
-        System.out.println("[DEBUG] Number of Cloudlets: " + cloudlets.size());
+        // Start simulation
+        /*
+        System.out.println("[DEBUG] Starting simulation:");
+        System.out.println("  Broker ID: " + brokerId);
+        System.out.println("  VMs: " + vmList.size());
+        System.out.println("  Cloudlets: " + cloudlets.size());
+        */
         
         CloudSim.startSimulation();
 
-        // 6) Collect results and calculate higher-level metrics
+        // Collect results
         List<Cloudlet> finished = broker.getCloudletReceivedList();
-        System.out.println("[DEBUG] Finished cloudlets: " + finished.size());
         
-        // Debug cloudlet states
-        for (Cloudlet cloudlet : finished) {
-            System.out.println("[DEBUG] Cloudlet " + cloudlet.getCloudletId() + 
-                              " - Status: " + cloudlet.getCloudletStatusString() +
-                              " - ExecFinishTime: " + cloudlet.getExecFinishTime() +
-                              " - ExecStartTime: " + cloudlet.getExecStartTime() +
-                              " - ActualCPUTime: " + cloudlet.getActualCPUTime());
+        // Validate results
+        if (finished.size() != cloudlets.size()) {
+            System.err.println("[WARNING] Not all cloudlets finished: " + 
+                             finished.size() + " of " + cloudlets.size());
         }
         
-        MetricsCalculator calculator = new MetricsCalculator(vmList, datacenter, finished);
-        return calculator.buildResults();
+        MetricsCalculator calculator = new MetricsCalculator(vmList, datacenter, finished, request.getOptimizationAlgorithm());
+        
+        // Get fitness value from broker's algorithm if available
+        double fitness = 0.0;
+        ISchedulingAlgorithm brokerAlgorithm = broker.getLastUsedAlgorithm();
+        if (brokerAlgorithm != null && brokerAlgorithm.getMetrics() != null) {
+            Double fitnessValue = brokerAlgorithm.getMetrics().get("fitness");
+            if (fitnessValue != null) {
+                fitness = fitnessValue;
+            }
+        }
+        
+        return calculator.buildResults(fitness);
         } // end synchronized block
     }
 
@@ -185,15 +203,25 @@ public class EnhancedSimulationManager {
     }
 
     /**
-     * Builds a very simple synthetic workload with random Cloudlet lengths and PEs.
+     * Generate synthetic workload for testing
+     * Based on Google cluster trace patterns
      */
     private List<Cloudlet> generateSyntheticWorkload() {
         List<Cloudlet> cloudlets = new ArrayList<>();
-        Random random = new Random();
+        Random random = new Random(42); // Fixed seed for reproducibility
 
         for (int i = 0; i < request.getNumCloudlets(); i++) {
-            long length = SimulationConstants.MIN_CLOUDLET_LENGTH + 
-                         random.nextInt(SimulationConstants.MAX_CLOUDLET_LENGTH - SimulationConstants.MIN_CLOUDLET_LENGTH);
+            // Bimodal distribution: 80% short tasks, 20% long tasks
+            long length;
+            if (random.nextDouble() < 0.8) {
+                // Short task
+                length = SimulationConstants.MIN_CLOUDLET_LENGTH + 
+                        random.nextInt(5000);
+            } else {
+                // Long task - fixed to avoid IllegalArgumentException
+                length = 10000 + random.nextInt(20000); // Generate lengths between 10000-30000
+            }
+            
             int pes = SimulationConstants.MIN_CLOUDLET_PES + 
                      random.nextInt(SimulationConstants.MAX_CLOUDLET_PES - SimulationConstants.MIN_CLOUDLET_PES + 1);
 

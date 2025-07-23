@@ -5,19 +5,29 @@ import com.thesis.cloudsim.dto.ProcessedResults;
 import com.thesis.cloudsim.dto.SimulationRequest;
 import com.thesis.cloudsim.matlab.MatlabIntegrationService;
 import com.thesis.cloudsim.metrics.SimulationResults;
-// Replaced with the simpler simulation orchestrator
 import com.thesis.cloudsim.simulation.EnhancedSimulationManager;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.http.ResponseEntity;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 
+/**
+ * REST controller for simulation endpoints
+ * 
+ * @author Kier M. 
+ * TODO: Add caching for repeated simulations with same params
+ * TODO: Implement async processing for large workloads
+ */
 @RestController
 @RequestMapping("/api/simulate")
 public class SimulationController {
 
+    private static final Logger logger = LoggerFactory.getLogger(SimulationController.class);
+    
     private final ISchedulingAlgorithm epso;
     private final ISchedulingAlgorithm eaco;
     
@@ -28,20 +38,42 @@ public class SimulationController {
                                 @Qualifier("eaco") ISchedulingAlgorithm eaco) {
         this.epso = epso;
         this.eaco = eaco;
+        logger.info("SimulationController initialized with EPSO and EACO algorithms");
     }
 
     @PostMapping("/raw")
     public SimulationResults runSimulationRaw(@RequestBody SimulationRequest request) throws IOException {
-        // Decide which optimisation algorithm to run (EPSO or EACO)
-        ISchedulingAlgorithm algorithm = "EPSO".equalsIgnoreCase(request.getOptimizationAlgorithm()) ? epso : eaco;
+        logger.debug("Received simulation request for algorithm: {}", request.getOptimizationAlgorithm());
+        
+        // Select algorithm based on request - ensure proper algorithm injection
+        ISchedulingAlgorithm algorithm;
+        if ("EPSO".equalsIgnoreCase(request.getOptimizationAlgorithm())) {
+            algorithm = epso;
+            logger.debug("Using EPSO algorithm");
+        } else {
+            algorithm = eaco;
+            logger.debug("Using EACO algorithm");
+        }
+        
+        // Run simulation
+        long startTime = System.currentTimeMillis();
         EnhancedSimulationManager manager = new EnhancedSimulationManager(algorithm, request);
-        return manager.run();
+        SimulationResults results = manager.run();
+        
+        long executionTime = System.currentTimeMillis() - startTime;
+        logger.info("Simulation completed in {} ms", executionTime);
+        
+        return results;
     }
 
-@PostMapping("/with-plots")
-public ResponseEntity<Object> runSimulationWithPlots(@RequestBody SimulationRequest request) throws IOException {
+    /**
+     * Run simulation with MATLAB visualization support
+     */
+    @PostMapping("/with-plots")
+    public ResponseEntity<Object> runSimulationWithPlots(@RequestBody SimulationRequest request) throws IOException {
         // Check if MATLAB service is available
         if (matlabService == null) {
+            logger.warn("MATLAB service not available - plots disabled");
             return ResponseEntity
                     .status(503)
                     .body(java.util.Map.of(
@@ -50,19 +82,29 @@ public ResponseEntity<Object> runSimulationWithPlots(@RequestBody SimulationRequ
                     ));
         }
         
-        // Re-use the same algorithm-selection logic
+        // Select algorithm
         ISchedulingAlgorithm algorithm = "EPSO".equalsIgnoreCase(request.getOptimizationAlgorithm()) ? epso : eaco;
         EnhancedSimulationManager manager = new EnhancedSimulationManager(algorithm, request);
-        // If MATLAB engine is still starting, instruct front-end to retry later
+        
+        // Check if MATLAB is ready
         if (!matlabService.isReady()) {
+            logger.info("MATLAB engine warming up...");
             return ResponseEntity
                     .accepted()
                     .header(org.springframework.http.HttpHeaders.RETRY_AFTER, "5")
                     .body(java.util.Map.of("status", "WARMING_UP"));
         }
-        SimulationResults raw = manager.run();
-        String algorithmName = request.getOptimizationAlgorithm() != null ? request.getOptimizationAlgorithm() : "CloudSim";
-        ProcessedResults out = matlabService.processResults(raw, algorithmName);
-        return ResponseEntity.ok(out);
+        
+        try {
+            SimulationResults raw = manager.run();
+            String algorithmName = request.getOptimizationAlgorithm() != null ? request.getOptimizationAlgorithm() : "CloudSim";
+            ProcessedResults out = matlabService.processResults(raw, algorithmName);
+            return ResponseEntity.ok(out);
+        } catch (Exception e) {
+            logger.error("Error during MATLAB processing", e);
+            // Fallback to raw results if MATLAB fails
+            // TODO: Implement proper error recovery
+            throw e;
+        }
     }
 }
