@@ -21,7 +21,7 @@ import java.util.HashMap;
 
 @RestController
 @RequestMapping("/api")
-@CrossOrigin(origins = {"http://localhost:3000", "http://localhost:5173"})
+@CrossOrigin(origins = {"http://localhost:3000", "http://localhost:5173", "file://"})
 public class ApiController {
 
     private final ISchedulingAlgorithm epso;
@@ -66,11 +66,28 @@ public class ApiController {
         }
     }
 
+    @PostMapping("/test-file-upload")
+    public ResponseEntity<?> testFileUpload(
+            @RequestParam("file") MultipartFile file,
+            @RequestParam("testParam") String testParam) {
+        Map<String, Object> response = new HashMap<>();
+        response.put("fileName", file.getOriginalFilename());
+        response.put("fileSize", file.getSize());
+        response.put("testParam", testParam);
+        response.put("message", "File received successfully");
+        return ResponseEntity.ok(response);
+    }
+    
     @PostMapping("/run-with-file")
-    public ResponseEntity<SimulationResults> runSimulationWithFile(
+    public ResponseEntity<?> runSimulationWithFile(
             @RequestParam("file") MultipartFile file,
             @RequestParam Map<String, String> params) {
         try {
+            // Log incoming parameters for debugging
+            System.out.println("[DEBUG] /run-with-file called with params: " + params);
+            System.out.println("[DEBUG] File name: " + file.getOriginalFilename());
+            System.out.println("[DEBUG] File size: " + file.getSize());
+            
             // Convert params to SimulationRequest
             SimulationRequest request = mapParamsToRequest(params);
             
@@ -81,6 +98,7 @@ public class ApiController {
             
             // Choose algorithm (simple ternary operator – beginner-friendly)
             ISchedulingAlgorithm algorithm = "EPSO".equalsIgnoreCase(request.getOptimizationAlgorithm()) ? epso : eaco;
+            System.out.println("[DEBUG] Using algorithm: " + request.getOptimizationAlgorithm());
 
             // Run the simulation with the uploaded workload file
             EnhancedSimulationManager manager = new EnhancedSimulationManager(algorithm, request);
@@ -91,31 +109,48 @@ public class ApiController {
 
             return ResponseEntity.ok(results);
         } catch (Exception e) {
-            return ResponseEntity.badRequest().build();
+            e.printStackTrace();
+            // Return detailed error message in response body
+            Map<String, String> errorResponse = new HashMap<>();
+            errorResponse.put("error", e.getClass().getSimpleName());
+            errorResponse.put("message", e.getMessage());
+            errorResponse.put("algorithm", params.get("optimizationAlgorithm"));
+            errorResponse.put("details", "Error in /run-with-file endpoint");
+            return ResponseEntity.badRequest().body(errorResponse);
         }
     }
 
     private SimulationRequest mapParamsToRequest(Map<String, String> params) {
         SimulationRequest request = new SimulationRequest();
         
-        // Map all the parameters from the form data
-        request.setOptimizationAlgorithm(params.get("optimizationAlgorithm"));
-        request.setNumHosts(Integer.parseInt(params.getOrDefault("numHosts", "10")));
-        request.setNumVMs(Integer.parseInt(params.getOrDefault("numVMs", "50")));
-        request.setNumPesPerHost(Integer.parseInt(params.getOrDefault("numPesPerHost", "2")));
-        request.setPeMips(Integer.parseInt(params.getOrDefault("peMips", "2000")));
-        request.setRamPerHost(Integer.parseInt(params.getOrDefault("ramPerHost", "2048")));
-        request.setBwPerHost(Integer.parseInt(params.getOrDefault("bwPerHost", "10000")));
-        request.setStoragePerHost(Integer.parseInt(params.getOrDefault("storagePerHost", "100000")));
-        request.setVmMips(Integer.parseInt(params.getOrDefault("vmMips", "1000")));
-        request.setVmPes(Integer.parseInt(params.getOrDefault("vmPes", "2")));
-        request.setVmRam(Integer.parseInt(params.getOrDefault("vmRam", "1024")));
-        request.setVmBw(Integer.parseInt(params.getOrDefault("vmBw", "1000")));
-        request.setVmSize(Integer.parseInt(params.getOrDefault("vmSize", "10000")));
-        request.setVmScheduler(params.getOrDefault("vmScheduler", "TimeShared"));
-        request.setNumCloudlets(Integer.parseInt(params.getOrDefault("numCloudlets", "100")));
-        request.setWorkloadType(params.getOrDefault("workloadType", "CSV"));
-        request.setUseDefaultWorkload(Boolean.parseBoolean(params.getOrDefault("useDefaultWorkload", "false")));
+        System.out.println("[DEBUG] mapParamsToRequest - All received params:");
+        params.forEach((key, value) -> System.out.println("  " + key + " = " + value));
+        
+        try {
+            // Map all the parameters from the form data
+            request.setOptimizationAlgorithm(params.get("optimizationAlgorithm"));
+            request.setNumHosts(Integer.parseInt(params.getOrDefault("numHosts", "10")));
+            request.setNumVMs(Integer.parseInt(params.getOrDefault("numVMs", "50")));
+            request.setNumPesPerHost(Integer.parseInt(params.getOrDefault("numPesPerHost", "2")));
+            request.setPeMips(Integer.parseInt(params.getOrDefault("peMips", "2000")));
+            request.setRamPerHost(Integer.parseInt(params.getOrDefault("ramPerHost", "2048")));
+            request.setBwPerHost(Integer.parseInt(params.getOrDefault("bwPerHost", "10000")));
+            request.setStoragePerHost(Integer.parseInt(params.getOrDefault("storagePerHost", "100000")));
+            request.setVmMips(Integer.parseInt(params.getOrDefault("vmMips", "1000")));
+            request.setVmPes(Integer.parseInt(params.getOrDefault("vmPes", "2")));
+            request.setVmRam(Integer.parseInt(params.getOrDefault("vmRam", "1024")));
+            request.setVmBw(Integer.parseInt(params.getOrDefault("vmBw", "1000")));
+            request.setVmSize(Integer.parseInt(params.getOrDefault("vmSize", "10000")));
+            request.setVmScheduler(params.getOrDefault("vmScheduler", "TimeShared"));
+            request.setNumCloudlets(Integer.parseInt(params.getOrDefault("numCloudlets", "100")));
+            request.setWorkloadType(params.getOrDefault("workloadType", "CSV"));
+            request.setUseDefaultWorkload(Boolean.parseBoolean(params.getOrDefault("useDefaultWorkload", "false")));
+            
+            System.out.println("[DEBUG] Successfully created SimulationRequest");
+        } catch (NumberFormatException e) {
+            System.err.println("[ERROR] Failed to parse numeric parameter: " + e.getMessage());
+            throw e;
+        }
         
         return request;
     }
