@@ -20,35 +20,88 @@ public class DatasetUtils {
     public List<Cloudlet> loadWorkload(String path) throws IOException {
         List<Cloudlet> cloudlets = new ArrayList<>();
         int cloudletId = 0; // Manual ID counter
+        int lineNumber = 0;
+        int maxCloudlets = 100; // Limit to first 100 cloudlets for now
+        
         try (BufferedReader br = new BufferedReader(new FileReader(path))) {
             String line = br.readLine(); // Skip header if present
-            while ((line = br.readLine()) != null) {
+            lineNumber++;
+            
+            while ((line = br.readLine()) != null && cloudlets.size() < maxCloudlets) {
+                lineNumber++;
                 if (line.isBlank()) {
                     continue;
                 }
-                String[] tokens = line.split(",");
-                long length = Long.parseLong(tokens[0].trim());
-                int pes = tokens.length > 1 ? Integer.parseInt(tokens[1].trim()) : 1;
                 
-                // Parse network-related columns for enhanced cost model
-                // Values in CSV are normalized (0-1), convert to bytes assuming 1GB max
-                double normalizedFileSize = tokens.length > 2 ? Double.parseDouble(tokens[2].trim()) : 0.0;
-                double normalizedOutputSize = tokens.length > 3 ? Double.parseDouble(tokens[3].trim()) : 0.0;
-                
-                // Convert normalized values to bytes (assuming max 1GB = 1024*1024*1024 bytes)
-                long fileSize = (long)(normalizedFileSize * 1024 * 1024 * 1024);
-                long outputSize = (long)(normalizedOutputSize * 1024 * 1024 * 1024);
+                try {
+                    String[] tokens = line.split(",");
+                    if (tokens.length < 1 || tokens[0].trim().isEmpty()) {
+                        continue; // Skip rows with empty first column
+                    }
+                    
+                    // Handle floating-point values by parsing as double first, then converting to long
+                    long length = (long) Double.parseDouble(tokens[0].trim());
+                    
+                    // Ensure length is reasonable (at least 1000 MI)
+                    if (length < 1000) {
+                        length = 1000;
+                    }
+                    
+                    // Parse PES with default value
+                    int pes = 1;
+                    if (tokens.length > 1 && !tokens[1].trim().isEmpty()) {
+                        try {
+                            pes = Math.max(1, (int) Double.parseDouble(tokens[1].trim()));
+                        } catch (NumberFormatException e) {
+                            pes = 1;
+                        }
+                    }
+                    
+                    // Parse network-related columns for enhanced cost model
+                    // Values in CSV are normalized (0-1), convert to bytes assuming 1GB max
+                    double normalizedFileSize = 0.0;
+                    double normalizedOutputSize = 0.0;
+                    
+                    if (tokens.length > 2 && !tokens[2].trim().isEmpty()) {
+                        try {
+                            normalizedFileSize = Double.parseDouble(tokens[2].trim());
+                        } catch (NumberFormatException e) {
+                            normalizedFileSize = 0.1; // Default small file size
+                        }
+                    }
+                    
+                    if (tokens.length > 3 && !tokens[3].trim().isEmpty()) {
+                        try {
+                            normalizedOutputSize = Double.parseDouble(tokens[3].trim());
+                        } catch (NumberFormatException e) {
+                            normalizedOutputSize = 0.1; // Default small output size
+                        }
+                    }
+                    
+                    // Convert normalized values to bytes (assuming max 1GB = 1024*1024*1024 bytes)
+                    long fileSize = Math.max(300, (long)(normalizedFileSize * 1024 * 1024 * 1024));
+                    long outputSize = Math.max(300, (long)(normalizedOutputSize * 1024 * 1024 * 1024));
 
-                Cloudlet cl = new Cloudlet(cloudletId++, length, pes, fileSize, outputSize, 
-                    new UtilizationModelFull(), new UtilizationModelFull(), new UtilizationModelFull());
-                cl.setUserId(0); // Set user ID
-                cloudlets.add(cl);
+                    Cloudlet cl = new Cloudlet(cloudletId++, length, pes, fileSize, outputSize, 
+                        new UtilizationModelFull(), new UtilizationModelFull(), new UtilizationModelFull());
+                    cl.setUserId(0); // Set user ID
+                    cloudlets.add(cl);
+                    
+                } catch (Exception e) {
+                    System.err.println("Error parsing line " + lineNumber + ": " + line);
+                    System.err.println("Error: " + e.getMessage());
+                    // Skip this line and continue
+                }
             }
         }
 
         if (cloudlets.isEmpty()) {
             throw new IOException("Empty dataset: " + path);
         }
+        
+        System.out.println("[DEBUG] Successfully loaded " + cloudlets.size() + " cloudlets from CSV file");
+        System.out.println("[DEBUG] Read " + lineNumber + " total lines from file");
+        
         return cloudlets;
     }
 } 
