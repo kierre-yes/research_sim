@@ -15,10 +15,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
-/**
- * Custom broker that integrates enhanced scheduling algorithms (e.g., EPSO, EACO)
- * for assigning cloudlets to VMs in CloudSim 7.0.0-alpha.
- */
+// Custom broker for scheduling algorithms
 public class CustomSchedulingBroker extends DatacenterBroker {
 
     private String algorithmName;
@@ -31,12 +28,7 @@ public class CustomSchedulingBroker extends DatacenterBroker {
         this.parameters = parameters;
     }
 
-    /**
-     * Setter included to align with the class diagram. Allows switching the scheduling
-     * algorithm at runtime without recreating the broker. Only updates the internal
-     * reference to the algorithm name; parameter set should be adjusted separately via
-     * {@link #updateParameters(AlgorithmParameters)}.
-     */
+    // Allows switching algorithm at runtime
     public void setSchedulingAlgorithm(ISchedulingAlgorithm algorithm) {
         if (algorithm == null) {
             throw new IllegalArgumentException("algorithm must not be null");
@@ -44,17 +36,16 @@ public class CustomSchedulingBroker extends DatacenterBroker {
         this.algorithmName = algorithm.getAlgorithmName();
     }
 
-    // Custom method that applies the selected optimisation algorithm to map
-    // cloudlets → VMs. It is invoked by our override of defaultCloudletToVmMapping().
+    // Maps cloudlets to VMs using the selected algorithm
     private Map<Cloudlet, Vm> customCloudletMapper(List<Cloudlet> cloudletList, List<Vm> vmList) {
-        // 1) Create an algorithm instance each time we need a fresh scheduling run
+        // Create algorithm instance
         ISchedulingAlgorithm algorithm = AlgorithmFactory.createAlgorithm(algorithmName);
-        this.lastUsedAlgorithm = algorithm; // Store for later access
+        this.lastUsedAlgorithm = algorithm;
 
-        // 2) Execute the optimisation algorithm to obtain a mapping
+        // Execute algorithm
         Map<Cloudlet, Vm> schedule = algorithm.schedule(cloudletList, vmList, parameters);
 
-        // 3) (Optional) print basic metrics for quick debugging
+        // Print metrics
         System.out.println("Metrics for " + algorithm.getAlgorithmName() + ":");
         for (java.util.Map.Entry<String, Double> entry : algorithm.getMetrics().entrySet()) {
             System.out.printf("%s: %.4f%n", entry.getKey(), entry.getValue());
@@ -62,10 +53,7 @@ public class CustomSchedulingBroker extends DatacenterBroker {
         return schedule;
     }
 
-    /**
-     * Override the method that submits cloudlets to VMs.
-     * This is called after VMs are created.
-     */
+    // Submit cloudlets to VMs
     @Override
     protected void submitCloudlets() {
         List<Vm> vmList = getGuestsCreatedList();
@@ -76,10 +64,10 @@ public class CustomSchedulingBroker extends DatacenterBroker {
         System.out.println("[DEBUG] Cloudlets to submit: " + cloudletList.size());
         
         if (!vmList.isEmpty() && !cloudletList.isEmpty()) {
-            // Apply custom scheduling algorithm
+            // Apply scheduling algorithm
             Map<Cloudlet, Vm> schedule = customCloudletMapper(cloudletList, vmList);
             
-            // Submit cloudlets based on the schedule
+            // Submit cloudlets
             List<Cloudlet> successfullySubmitted = new ArrayList<>();
             
             for (Map.Entry<Cloudlet, Vm> entry : schedule.entrySet()) {
@@ -87,10 +75,10 @@ public class CustomSchedulingBroker extends DatacenterBroker {
                 Vm vm = entry.getValue();
                 
                 if (vm != null) {
-                    // Set the VM assignment
+                    // Assign VM
                     cloudlet.setGuestId(vm.getId());
                     
-                    // Debug VM host assignment
+                    // Debug output
                     System.out.println("[DEBUG] VM " + vm.getId() + " - User ID: " + vm.getUserId() + 
                                      " - Host: " + (vm.getHost() != null ? vm.getHost().getId() : "null"));
                     
@@ -100,7 +88,7 @@ public class CustomSchedulingBroker extends DatacenterBroker {
                                 " to " + vm.getClassName() + " #", vm.getId());
                     }
                     
-                    // Send cloudlet to datacenter
+                    // Send to datacenter
                     Integer datacenterId = getVmsToDatacentersMap().get(vm.getId());
                     if (datacenterId == null) {
                         System.err.println("[ERROR] No datacenter mapping found for VM " + vm.getId());
@@ -116,29 +104,26 @@ public class CustomSchedulingBroker extends DatacenterBroker {
                 }
             }
             
-            // Remove submitted cloudlets from waiting list
+            // Remove submitted cloudlets
             getCloudletList().removeAll(successfullySubmitted);
         }
     }
 
-    // Method to update parameters dynamically
+    // Update algorithm parameters
     public void updateParameters(AlgorithmParameters newParams) {
         this.parameters = newParams;
     }
     
-    // Additional methods to match CloudSim 7.0 API
+    // CloudSim 7.0 compatibility methods
     public void setVmDestructionDelay(double delay) {
-        // CloudSim 7.0 doesn't have this feature, so we'll ignore it
-        // VMs are destroyed when the simulation ends
+        // Not supported in CloudSim 7.0
     }
     
     public List<Cloudlet> getCloudletFinishedList() {
         return getCloudletReceivedList();
     }
     
-    /**
-     * Get the last used algorithm instance for accessing metrics
-     */
+    // Get the algorithm instance for metrics
     public ISchedulingAlgorithm getLastUsedAlgorithm() {
         return lastUsedAlgorithm;
     }

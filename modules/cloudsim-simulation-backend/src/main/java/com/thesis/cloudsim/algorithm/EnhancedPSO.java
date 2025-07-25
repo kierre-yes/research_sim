@@ -8,27 +8,7 @@ import java.util.*;
 import java.util.concurrent.ThreadLocalRandom;
 import static com.thesis.cloudsim.algorithm.AlgorithmMetricUtils.*;
 
-/**
- * Enhanced Particle Swarm Optimization (EPSO) implementation for task scheduling
- * 
- * @author Kier M.
- * @version 2.1.5
- * @since 2024-01-15
- * 
- * Changelog:
- * v2.1.5 - Fixed VM assignment bug when position rounds to negative
- * v2.1.4 - Added adaptive velocity clamping
- * v2.1.3 - Improved fitness calculation with network cost
- * v2.1.0 - Major refactor for multi-objective optimization
- * 
- * Known issues:
- * - Position clamping can cause particles to stick at boundaries
- * - Performance degrades with >1000 cloudlets (need parallel implementation)
- * 
- * TODO: Implement constriction factor variant
- * TODO: Add mutation operator for diversity maintenance
- * FIXME: Memory leak when running multiple simulations in sequence
- */
+// Enhanced Particle Swarm Optimization for task scheduling
 public class EnhancedPSO implements ISchedulingAlgorithm {
 
     private static final String ALGORITHM_NAME = "EPSO";
@@ -41,10 +21,9 @@ public class EnhancedPSO implements ISchedulingAlgorithm {
     private List<Vm> vms;
     private AlgorithmParameters parameters;
     
-    // Not used currently but keeping for future time-based scheduling
+    // Time-based scheduling placeholder
     private double currentTime = 0.0;
     
-    // Debug flag - set to true for detailed output
     private static final boolean DEBUG = true;
 
     public EnhancedPSO() {
@@ -62,7 +41,7 @@ public class EnhancedPSO implements ISchedulingAlgorithm {
         
         initializeParticles();
         
-        // PSO main loop
+        // Main optimization loop
         double prevBestFitness = Double.MAX_VALUE;
         int stagnationCount = 0;
         
@@ -70,21 +49,9 @@ public class EnhancedPSO implements ISchedulingAlgorithm {
             updateParticles();
             updateGlobalBest();
             
-            // Check for convergence (experimental - disabled for now)
-            /*
-            if (Math.abs(prevBestFitness - globalBest.getFitness()) < 0.0001) {
-                stagnationCount++;
-                if (stagnationCount > 10) {
-                    if (DEBUG) System.out.println("[EPSO] Converged at iteration " + currentIteration);
-                    break;
-                }
-            } else {
-                stagnationCount = 0;
-            }
-            prevBestFitness = globalBest.getFitness();
-            */
+            // Convergence check disabled
             
-            // Debug output
+            // Progress output
             if (DEBUG && currentIteration % 10 == 0) {
                 System.out.println("[EPSO] Iteration " + currentIteration + 
                                  ", Best fitness: " + globalBest.getFitness());
@@ -126,14 +93,17 @@ public class EnhancedPSO implements ISchedulingAlgorithm {
     }
 
     private double calculateInertiaWeight() {
-        double progress = (double) currentIteration / parameters.getInt(AlgorithmParameters.MAX_ITERATIONS);
-        double minW = 0.1;
-        double maxW = parameters.getDouble(AlgorithmParameters.INERTIA_WEIGHT);
+        // Calculate non-linear inertia weight
         
-        // Exponential decay based on experiments from Feb 2024
-        // Tested linear, exponential, and chaotic - exponential gave best results
-        // Don't go below 0.1 or particles lose momentum
-        return minW + (maxW - minW) * Math.exp(-2 * progress);
+        double wMax = parameters.getDouble(AlgorithmParameters.INERTIA_WEIGHT_MAX);
+        double wMin = parameters.getDouble(AlgorithmParameters.INERTIA_WEIGHT_MIN);
+        double maxIterations = parameters.getInt(AlgorithmParameters.MAX_ITERATIONS);
+        
+        // Apply quadratic decay
+        double progress = (double) currentIteration / maxIterations;
+        double quadraticProgress = progress * progress;
+        
+        return wMax - (wMax - wMin) * quadraticProgress;
     }
 
     private void updateVelocity(Particle p, double w, double c1, double c2) {
@@ -147,10 +117,17 @@ public class EnhancedPSO implements ISchedulingAlgorithm {
     }
 
     private double calculateAdaptiveVelocityLimit() {
-        double progress = (double) currentIteration / parameters.getInt(AlgorithmParameters.MAX_ITERATIONS);
-        double maxV = parameters.getDouble(AlgorithmParameters.MAX_VELOCITY);
-        double minV = parameters.getDouble(AlgorithmParameters.MIN_VELOCITY);
-        return minV + (maxV - minV) * (1 - progress);
+        // Calculate adaptive velocity limit
+        
+        double vMaxInitial = parameters.getDouble(AlgorithmParameters.MAX_VELOCITY_INITIAL);
+        double vMaxFinal = parameters.getDouble(AlgorithmParameters.MAX_VELOCITY_FINAL);
+        double maxIterations = parameters.getInt(AlgorithmParameters.MAX_ITERATIONS);
+        
+        // Apply quadratic decay
+        double progress = (double) currentIteration / maxIterations;
+        double quadraticProgress = progress * progress;
+        
+        return vMaxInitial - (vMaxInitial - vMaxFinal) * quadraticProgress;
     }
 
     private void updatePosition(Particle p) {
@@ -158,9 +135,7 @@ public class EnhancedPSO implements ISchedulingAlgorithm {
         for (int i = 0; i < pos.length; i++) {
             pos[i] += vel[i];
             
-            // Boundary handling - using clamping approach
-            // Tried reflection and wrapping but both performed worse in tests
-            // See experiment logs from March 2024
+            // Apply boundary constraints
             pos[i] = Math.max(0, Math.min(vms.size() - 1, pos[i]));
         }
     }
@@ -176,20 +151,19 @@ public class EnhancedPSO implements ISchedulingAlgorithm {
     private Map<Cloudlet, Vm> convertToScheduleMap(double[] position) {
         Map<Cloudlet, Vm> schedule = new HashMap<>();
         
-        // Track VM usage to ensure all VMs get at least one cloudlet
+        // Track VM usage
         int[] vmUsage = new int[vms.size()];
         
         for (int i = 0; i < position.length && i < cloudlets.size(); i++) {
-            // Round to nearest VM index
+            // Map to VM index
             int idx = (int) Math.round(position[i]) % vms.size();
-            if (idx < 0) idx = 0;  // Shouldn't happen but just in case
+            if (idx < 0) idx = 0;
             
             schedule.put(cloudlets.get(i), vms.get(idx));
             vmUsage[idx]++;
         }
         
-        // Redistribute if some VMs are not utilized (optional optimization)
-        // This helps avoid idle VMs which improves resource utilization
+        // Redistribute to unused VMs
         for (int vmIdx = 0; vmIdx < vms.size(); vmIdx++) {
             if (vmUsage[vmIdx] == 0 && cloudlets.size() > vms.size()) {
                 // Find the most loaded VM and reassign one cloudlet
@@ -202,7 +176,7 @@ public class EnhancedPSO implements ISchedulingAlgorithm {
                     }
                 }
                 
-                // Only redistribute if the most loaded VM has more than 2 cloudlets
+                // Check if redistribution needed
                 if (maxLoad > 2) {
                     // Find a cloudlet assigned to the most loaded VM
                     for (Map.Entry<Cloudlet, Vm> entry : schedule.entrySet()) {
@@ -235,9 +209,7 @@ public class EnhancedPSO implements ISchedulingAlgorithm {
         e = AlgorithmMetricUtils.normalise("energy", e, cloudlets, vms);
         lb = AlgorithmMetricUtils.normalise("loadBalance", lb, cloudlets, vms);
         
-        // Multi-objective weighted sum
-        // Note: Weights don't need to sum to 1.0 - user can prioritize objectives
-        // As discussed in thesis section 4.2.3
+        // Weighted sum of objectives
         return parameters.getDouble(AlgorithmParameters.MAKESPAN_WEIGHT) * m
              + parameters.getDouble(AlgorithmParameters.COST_WEIGHT)     * c
              + parameters.getDouble(AlgorithmParameters.ENERGY_WEIGHT)   * e
@@ -267,8 +239,7 @@ public class EnhancedPSO implements ISchedulingAlgorithm {
         double energy = 0.0;
         for (Map.Entry<Cloudlet, Vm> e: sched.entrySet()) {
             double t = e.getKey().getCloudletLength() / e.getValue().getMips();
-            // Simplified energy calculation
-            energy += t * 100.0; // Basic power estimate
+            energy += t * 100.0;
         }
         return energy;
     }
@@ -329,7 +300,6 @@ public class EnhancedPSO implements ISchedulingAlgorithm {
         }
     }
     
-    // Helper method to convert schedule back to position array for fitness calculation
     private double[] convertPositionToArray(Map<Cloudlet, Vm> schedule) {
         double[] position = new double[cloudlets.size()];
         for (int i = 0; i < cloudlets.size(); i++) {

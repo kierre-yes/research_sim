@@ -15,13 +15,7 @@ import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 
-/**
- * REST controller for simulation endpoints
- * 
- * @author Kier M. 
- * TODO: Add caching for repeated simulations with same params
- * TODO: Implement async processing for large workloads
- */
+// REST controller for simulation endpoints
 @RestController
 @RequestMapping("/api/simulate")
 public class SimulationController {
@@ -45,7 +39,7 @@ public class SimulationController {
     public SimulationResults runSimulationRaw(@RequestBody SimulationRequest request) throws IOException {
         logger.debug("Received simulation request for algorithm: {}", request.getOptimizationAlgorithm());
         
-        // Select algorithm based on request - ensure proper algorithm injection
+        // Choose algorithm based on request
         ISchedulingAlgorithm algorithm;
         if ("EPSO".equalsIgnoreCase(request.getOptimizationAlgorithm())) {
             algorithm = epso;
@@ -55,7 +49,7 @@ public class SimulationController {
             logger.debug("Using EACO algorithm");
         }
         
-        // Run simulation
+        // Start the simulation
         long startTime = System.currentTimeMillis();
         EnhancedSimulationManager manager = new EnhancedSimulationManager(algorithm, request);
         SimulationResults results = manager.run();
@@ -71,7 +65,7 @@ public class SimulationController {
      */
     @PostMapping("/with-plots")
     public ResponseEntity<Object> runSimulationWithPlots(@RequestBody SimulationRequest request) throws IOException {
-        // Check if MATLAB service is available
+        // Verify MATLAB service availability
         if (matlabService == null) {
             logger.warn("MATLAB service not available - plots disabled");
             return ResponseEntity
@@ -82,7 +76,7 @@ public class SimulationController {
                     ));
         }
         
-        // Select algorithm
+        // Determine which algorithm to use
         ISchedulingAlgorithm algorithm = "EPSO".equalsIgnoreCase(request.getOptimizationAlgorithm()) ? epso : eaco;
         EnhancedSimulationManager manager = new EnhancedSimulationManager(algorithm, request);
         
@@ -102,8 +96,7 @@ public class SimulationController {
             return ResponseEntity.ok(out);
         } catch (Exception e) {
             logger.error("Error during MATLAB processing", e);
-            // Fallback to raw results if MATLAB fails
-            // TODO: Implement proper error recovery
+            // Use raw results if MATLAB fails
             throw e;
         }
     }

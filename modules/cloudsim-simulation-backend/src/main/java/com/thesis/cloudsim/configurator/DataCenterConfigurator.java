@@ -18,11 +18,7 @@ import org.cloudbus.cloudsim.Storage;
 import java.util.ArrayList;
 import java.util.List;
 
-/**
- * DataCenterConfigurator is responsible for creating the Datacenter, Hosts and VMs
- * based on user-defined parameters. It encapsulates all configuration logic so
- * SimulationManager focuses only on orchestration.
- */
+// Handles creation of Datacenter, Hosts, and VMs
 public class DataCenterConfigurator {
 
     private final int numHosts;
@@ -55,14 +51,10 @@ public class DataCenterConfigurator {
         this.vmSize = vmSize;
     }
 
-    /**
-     * Creates a Datacenter pre-populated with Hosts.
-     * We avoid advanced Streams – a simple loop builds each Host so the code is
-     * 100 % traceable by beginners.
-     */
+    // Creates a Datacenter with Hosts
     public Datacenter configureDatacenter(String name) {
         try {
-            // Create DatacenterCharacteristics
+            // Set datacenter characteristics
             String arch = "x86";
             String os = "Linux";
             String vmm = "Xen";
@@ -76,7 +68,7 @@ public class DataCenterConfigurator {
             DatacenterCharacteristics characteristics = new DatacenterCharacteristics(
                 arch, os, vmm, hostList, time_zone, cost, costPerMem, costPerStorage, costPerBw);
             
-            // Create Datacenter with VmAllocationPolicy and empty storage list
+            // Create datacenter
             List<Storage> storageList = new ArrayList<>();
             Datacenter datacenter = new Datacenter(name, characteristics, 
                 new VmAllocationPolicySimple(hostList), storageList, 1.0);
@@ -88,21 +80,19 @@ public class DataCenterConfigurator {
         }
     }
 
-    /**
-     * Creates hosts for the datacenter.
-     */
+    // Creates hosts for the datacenter
 private List<Host> buildHosts() {
         List<Host> hosts = new ArrayList<>();
 
-        // Build each Host one-by-one
+        // Create hosts
         for (int i = 0; i < numHosts; i++) {
             List<Pe> peList = new ArrayList<>();
             for (int p = 0; p < numPesPerHost; p++) {
-                peList.add(new Pe(p, new PeProvisionerSimple(peMips))); // Processing element with ID and provisioner
+                peList.add(new Pe(p, new PeProvisionerSimple(peMips)));
             }
-            // Host with ID, provisioners, storage, PE list and VM scheduler
+            // Create host
             Host host = new Host(
-                i, // host ID
+                i,
                 new RamProvisionerSimple(ramPerHost),
                 new BwProvisionerSimple(bwPerHost),
                 storagePerHost,
@@ -116,12 +106,12 @@ private List<Host> buildHosts() {
 
 private List<Vm> buildVms() {
         List<Vm> vms = new ArrayList<>();
-        String vmm = "Xen"; // Virtual Machine Monitor
+        String vmm = "Xen";
         for (int i = 0; i < numVMs; i++) {
-            // Vm constructor: id, userId, mips, numberOfPes, ram, bw, size, vmm, cloudletScheduler
+            // Create VM
             Vm vm = new Vm(
-                i, // VM ID
-                -1, // User ID (will be set by broker)
+                i,
+                -1,
                 vmMips,
                 vmPes,
                 vmRam,
@@ -135,30 +125,24 @@ private List<Vm> buildVms() {
         return vms;
     }
 
-    /**
-     * Public factory that returns the list of Hosts for external callers.
-     */
+    // Returns list of hosts
     public List<Host> createHosts() {
         return buildHosts();
     }
 
-    /**
-     * Public factory that returns the list of VMs for external callers.
-     */
+    // Returns list of VMs
     public List<Vm> createVms() {
         return buildVms();
     }
     
-    /**
-     * Creates VMs with a specific broker ID
-     */
+    // Creates VMs with specific broker ID
     public List<Vm> createVms(int brokerId) {
         List<Vm> vms = new ArrayList<>();
-        String vmm = "Xen"; // Virtual Machine Monitor
+        String vmm = "Xen";
         for (int i = 0; i < numVMs; i++) {
             Vm vm = new Vm(
-                i, // VM ID
-                brokerId, // User ID (broker ID)
+                i,
+                brokerId,
                 vmMips,
                 vmPes,
                 vmRam,

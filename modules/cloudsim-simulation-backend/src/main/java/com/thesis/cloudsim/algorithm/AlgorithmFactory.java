@@ -1,31 +1,10 @@
 package com.thesis.cloudsim.algorithm;
 
-/**
- * Factory class for creating *very simple* instances of the scheduling algorithms that ship with the
- * project.  We intentionally avoid complex reflection so that a beginner who has only been coding
- * Java for a few months can follow the code path line-by-line.
- *
- * The public contract remains the same – supply an algorithm name and we hand back an
- * {@link ISchedulingAlgorithm}. Internally we now rely on a plain old <code>switch</code> statement
- * which is familiar to every Java newbie.
- */
+// Factory class for creating scheduling algorithm instances
 public class AlgorithmFactory {
 
-    /**
-     * Creates ("new") an algorithm instance that corresponds to the supplied name.
-     * <p>
-     * Supported values:
-     * <ul>
-     *   <li>"EPSO" or "EnhancedPSO" for Particle-Swarm-Optimisation</li>
-     *   <li>"EACO" or "EnhancedACO" for Ant-Colony-Optimisation</li>
-     * </ul>
-     * Anything else results in an {@link IllegalArgumentException} so that the caller gets fast
-     * feedback about the spelling mistake.
-     *
-     * @param algorithmName user-supplied identifier (case insensitive)
-     * @return a <strong>new</strong> instance of the requested algorithm ready for configuration
-     * @throws IllegalArgumentException when the name is not recognised
-     */
+    // Creates an algorithm instance based on the given name
+    // Supports: EPSO/EnhancedPSO, EACO/EnhancedACO
     public static ISchedulingAlgorithm createAlgorithm(String algorithmName) {
         if (algorithmName == null) {
             throw new IllegalArgumentException("Algorithm name must not be null");
@@ -43,37 +22,33 @@ public class AlgorithmFactory {
         }
     }
 
-    /**
-     * Returns the small set of strings that are valid inputs for {@link #createAlgorithm(String)}.
-     * This helper is handy when you want to list the available choices in a UI drop-down.
-     */
+    // Returns list of available algorithm names
     public static java.util.Set<String> getAvailableAlgorithms() {
-        // Using Set.of keeps the code compact and immutable – ideal for a constant collection.
         return java.util.Set.of("EPSO", "EnhancedPSO", "EACO", "EnhancedACO");
     }
 
-    /**
-     * Create algorithm parameters with default values for specific algorithm
-     * @param algorithmName Name of the algorithm
-     * @return Configured parameters
-     */
+    // Creates default parameters for the specified algorithm
     public static AlgorithmParameters createDefaultParameters(String algorithmName) {
         AlgorithmParameters params = new AlgorithmParameters();
         switch (algorithmName.toUpperCase()) {
             case "EPSO":
             case "ENHANCEDPSO":
-                // PSO-specific tuning
+                // PSO parameters
                 params.setParameter(AlgorithmParameters.MAX_ITERATIONS, 150);
                 params.setParameter(AlgorithmParameters.POPULATION_SIZE, 30);
                 params.setParameter(AlgorithmParameters.INERTIA_WEIGHT, 0.9);
+                params.setParameter(AlgorithmParameters.INERTIA_WEIGHT_MAX, 0.9);
+                params.setParameter(AlgorithmParameters.INERTIA_WEIGHT_MIN, 0.4);
                 params.setParameter(AlgorithmParameters.COGNITIVE_COEFFICIENT, 1.5);
                 params.setParameter(AlgorithmParameters.SOCIAL_COEFFICIENT, 1.5);
                 params.setParameter(AlgorithmParameters.MAX_VELOCITY, 6.0);
                 params.setParameter(AlgorithmParameters.MIN_VELOCITY, -6.0);
+                params.setParameter(AlgorithmParameters.MAX_VELOCITY_INITIAL, 6.0);
+                params.setParameter(AlgorithmParameters.MAX_VELOCITY_FINAL, 1.0);
                 break;
             case "EACO":
             case "ENHANCEDACO":
-                // ACO-specific tuning
+                // ACO parameters
                 params.setParameter(AlgorithmParameters.MAX_ITERATIONS, 120);
                 params.setParameter(AlgorithmParameters.POPULATION_SIZE, 25);
                 params.setParameter(AlgorithmParameters.PHEROMONE_DECAY, 0.6);
@@ -82,11 +57,13 @@ public class AlgorithmFactory {
                 params.setParameter(AlgorithmParameters.INITIAL_PHEROMONE, 0.1);
                 params.setParameter(AlgorithmParameters.MIN_PHEROMONE, 0.005);
                 params.setParameter(AlgorithmParameters.MAX_PHEROMONE, 2.0);
+                params.setParameter(AlgorithmParameters.EVAPORATION_MIN, 0.1);
+                params.setParameter(AlgorithmParameters.EVAPORATION_MAX, 0.9);
                 break;
             default:
                 throw new IllegalArgumentException("Unknown algorithm for default parameters: " + algorithmName);
         }
-        // Common multi-objective weights (equal by default)
+        // Set equal weights for all objectives
         params.setParameter(AlgorithmParameters.MAKESPAN_WEIGHT, 0.25);
         params.setParameter(AlgorithmParameters.COST_WEIGHT, 0.25);
         params.setParameter(AlgorithmParameters.ENERGY_WEIGHT, 0.25);
@@ -94,17 +71,10 @@ public class AlgorithmFactory {
         return params;
     }
 
-    /**
-     * Create algorithm parameters for multi-objective optimization
-     * @param makespanWeight Weight for makespan objective
-     * @param costWeight Weight for cost objective
-     * @param energyWeight Weight for energy objective
-     * @param loadBalanceWeight Weight for load balance objective
-     * @return Configured parameters
-     */
+    // Creates parameters with custom weights for multi-objective optimization
     public static AlgorithmParameters createMultiObjectiveParameters(
             double makespanWeight, double costWeight, double energyWeight, double loadBalanceWeight) {
-        // Normalize weights
+        // Normalize weights to sum to 1
         double totalWeight = makespanWeight + costWeight + energyWeight + loadBalanceWeight;
         if (totalWeight <= 0) {
             throw new IllegalArgumentException("Total weight must be positive");
@@ -117,22 +87,17 @@ public class AlgorithmFactory {
         return params;
     }
 
-    /**
-     * Validate algorithm parameters
-     * @param parameters Parameters to validate
-     * @param algorithmName Algorithm name for specific validation
-     * @return true if parameters are valid
-     */
+    // Validates algorithm parameters
     public static boolean validateParameters(AlgorithmParameters parameters, String algorithmName) {
         try {
-            // Check required common parameters
+            // Check common parameters
             if (parameters.getInt(AlgorithmParameters.MAX_ITERATIONS) <= 0) {
                 return false;
             }
             if (parameters.getInt(AlgorithmParameters.POPULATION_SIZE) <= 0) {
                 return false;
             }
-            // Check weight parameters
+            // Check weights sum to 1
             double totalWeight = parameters.getDouble(AlgorithmParameters.MAKESPAN_WEIGHT) +
                                  parameters.getDouble(AlgorithmParameters.COST_WEIGHT) +
                                  parameters.getDouble(AlgorithmParameters.ENERGY_WEIGHT) +
@@ -140,7 +105,7 @@ public class AlgorithmFactory {
             if (Math.abs(totalWeight - 1.0) > 1e-6) {
                 return false;
             }
-            // Algorithm-specific validation
+            // Validate algorithm-specific parameters
             switch (algorithmName.toUpperCase()) {
                 case "EPSO":
                 case "ENHANCEDPSO":

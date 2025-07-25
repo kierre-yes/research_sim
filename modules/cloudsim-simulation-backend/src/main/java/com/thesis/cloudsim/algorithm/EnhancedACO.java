@@ -7,28 +7,14 @@ import java.util.*;
 import java.util.concurrent.ThreadLocalRandom;
 import static com.thesis.cloudsim.algorithm.AlgorithmMetricUtils.*;
 
-/**
- * Enhanced Ant Colony Optimization (EACO) for CloudSim task scheduling
- * 
- * @author Kier
- * 
- * 
- * Changelog:
- * v2.1.3 - Fixed pheromone overflow issue in large-scale simulations
- * v2.1.2 - Added adaptive evaporation rate
- * v2.1.0 - Implemented diversity-based colony management
- * v2.0.0 - Major refactoring for CloudSim 7.0 compatibility
- * 
- * TODO: Implement parallel ant construction for better performance
- * TODO: Add support for multi-objective optimization
- */
+// Enhanced Ant Colony Optimization for task scheduling
 public class EnhancedACO implements ISchedulingAlgorithm {
     
     private static final String ALGORITHM_NAME = "EACO";
     private final Map<String, Double> metrics;
     private final Random random;
     
-    // ACO components
+// Ant Colony Optimization components
     private List<Ant> ants;
     private double[][] pheromoneMatrix;
     private double[][] heuristicMatrix;
@@ -60,16 +46,13 @@ public class EnhancedACO implements ISchedulingAlgorithm {
         initializeMatrices();
         initializeAnts();
         
-        // ACO loop
+        // Main loop for ant colony optimization
         for (currentIteration = 0; currentIteration < parameters.getInt(AlgorithmParameters.MAX_ITERATIONS); currentIteration++) {
             constructSolutions();
             updateBestSolution();
             updatePheromones();
             
-            // Debug output every 10 iterations
-            // if (currentIteration % 10 == 0) {
-            //     System.out.println("[EACO] Iteration " + currentIteration + ", best fitness: " + bestFitness);
-            // }
+// Debug output example removed for clarity
         }
         
         calculateMetrics(bestSolution);
@@ -84,10 +67,10 @@ public class EnhancedACO implements ISchedulingAlgorithm {
         pheromoneMatrix = new double[cloudletCount][vmCount];
         double initialPheromone = parameters.getDouble(AlgorithmParameters.INITIAL_PHEROMONE);
         
-        // Init with small random variation to break symmetry
+        // Initialize matrices with random variation
         for (int i = 0; i < cloudletCount; i++) {
             for (int j = 0; j < vmCount; j++) {
-                // random variation
+                // Apply random variation
                 double variation = 0.95 + (random.nextDouble() * 0.1);
                 pheromoneMatrix[i][j] = initialPheromone * variation;
             }
@@ -105,8 +88,7 @@ public class EnhancedACO implements ISchedulingAlgorithm {
                 
                 double executionTime = cloudlet.getCloudletLength() / vm.getMips();
                 
-                // FIXME: This assumes host is always available - need null check
-                // Quick fix for demo
+                // Assumes host is always available
                 double resourceRatio = 1.0;
                 if (vm.getHost() != null) {
                     double vmRamCapacity = vm.getRam();
@@ -132,7 +114,6 @@ public class EnhancedACO implements ISchedulingAlgorithm {
         for (Ant ant : ants) {
             ant.constructSolution();
             
-            // Evaluate ant's solution
             Map<Cloudlet, Vm> solution = ant.getSolution();
             double fitness = calculateFitness(solution);
             ant.setFitness(fitness);
@@ -149,7 +130,7 @@ public class EnhancedACO implements ISchedulingAlgorithm {
     }
     
     private void updatePheromones() {
-        // Adaptive pheromone evaporation
+        // Calculate pheromone evaporation adaptively
         double evaporationRate = calculateAdaptiveEvaporation();
         
         // Evaporate pheromones
@@ -176,18 +157,26 @@ public class EnhancedACO implements ISchedulingAlgorithm {
     }
     
     private double calculateAdaptiveEvaporation() {
-        double baseEvaporation = parameters.getDouble(AlgorithmParameters.PHEROMONE_DECAY);
-        double maxIter = parameters.getInt(AlgorithmParameters.MAX_ITERATIONS);
-        double progress = (double) currentIteration / maxIter;
+        // Adaptive pheromone evaporation formula based on fitness
         
-        double diversity = calculateSolutionDiversity();
+        double rhoMin = parameters.getDouble(AlgorithmParameters.EVAPORATION_MIN);
+        double rhoMax = parameters.getDouble(AlgorithmParameters.EVAPORATION_MAX);
         
-        // for our workload patterns
-        double adaptiveFactor = 0.5 + 0.5 * Math.exp(-diversity * 2.0);
-        double timeDecay = 1.0 - Math.exp(-progress * 3.0);
+        // Calculate average fitness of current iteration
+        double avgFitness = calculateAverageFitness();
+        double bestFitnessValue = bestFitness;
         
-        // TODO: Make these configurable
-        return baseEvaporation * adaptiveFactor * (1.0 - timeDecay * 0.5);
+        // Avoid division by zero
+        if (bestFitnessValue <= 0) {
+            return rhoMax; // Maximum evaporation if best fitness is 0 or negative
+        }
+        
+        // Calculate adaptive rate
+        double adaptiveRate = rhoMin + (rhoMax - rhoMin) * 
+                             ((bestFitnessValue - avgFitness) / bestFitnessValue);
+        
+        // Ensure the rate is within bounds
+        return Math.max(rhoMin, Math.min(rhoMax, adaptiveRate));
     }
     
     private double calculateSolutionDiversity() {
@@ -242,10 +231,18 @@ public class EnhancedACO implements ISchedulingAlgorithm {
     private void reinforceBestSolution() {
         if (bestSolution == null) return;
         
-        // Load-based reinforcement: stronger reinforcement for better load balance
-        double loadBalanceScore = 1.0 / (1.0 + calculateLoadBalance(bestSolution));
-        double reinforcement = loadBalanceScore * (1.0 / (1.0 + bestFitness));
+        // Load-based reinforcement
         
+        // Calculate VM loads
+        Map<Vm, Double> vmLoads = new HashMap<>();
+        for (Map.Entry<Cloudlet, Vm> entry : bestSolution.entrySet()) {
+            Cloudlet cloudlet = entry.getKey();
+            Vm vm = entry.getValue();
+            double load = cloudlet.getCloudletLength() / vm.getMips();
+            vmLoads.put(vm, vmLoads.getOrDefault(vm, 0.0) + load);
+        }
+        
+        // Apply load-based reinforcement
         for (int i = 0; i < cloudlets.size(); i++) {
             Cloudlet cloudlet = cloudlets.get(i);
             Vm assignedVm = bestSolution.get(cloudlet);
@@ -253,6 +250,8 @@ public class EnhancedACO implements ISchedulingAlgorithm {
             if (assignedVm != null) {
                 int vmIndex = vms.indexOf(assignedVm);
                 if (vmIndex >= 0) {
+                    double vmLoad = vmLoads.getOrDefault(assignedVm, 0.0);
+                    double reinforcement = 1.0 / (1.0 + vmLoad);
                     pheromoneMatrix[i][vmIndex] += reinforcement;
                 }
             }
@@ -270,7 +269,7 @@ public class EnhancedACO implements ISchedulingAlgorithm {
     }
     
     private double calculateFitness(Map<Cloudlet, Vm> schedule) {
-        // Multi-objective fitness calculation (same as EPSO)
+        // Multi-objective fitness
         double makespan = AlgorithmMetricUtils.makespan(schedule);
         double cost = AlgorithmMetricUtils.enhancedCost(schedule, cloudlets, vms);
         double energy = AlgorithmMetricUtils.energy(schedule);
@@ -330,8 +329,7 @@ public class EnhancedACO implements ISchedulingAlgorithm {
             Vm vm = entry.getValue();
             
             double executionTime = cloudlet.getCloudletLength() / vm.getMips();
-            // Simplified power consumption calculation
-            double powerConsumption = 100.0; // Basic estimate
+            double powerConsumption = 100.0;
             totalEnergy += executionTime * powerConsumption;
         }
         
@@ -419,6 +417,17 @@ public class EnhancedACO implements ISchedulingAlgorithm {
         return count > 0 ? totalVariance / count : 0.0;
     }
     
+    private double calculateAverageFitness() {
+        if (ants.isEmpty()) return Double.MAX_VALUE;
+        
+        double totalFitness = 0.0;
+        for (Ant ant : ants) {
+            totalFitness += ant.getFitness();
+        }
+        
+        return totalFitness / ants.size();
+    }
+    
     @Override
     public String getAlgorithmName() {
         return ALGORITHM_NAME;
@@ -440,9 +449,7 @@ public class EnhancedACO implements ISchedulingAlgorithm {
         metrics.clear();
     }
     
-    /**
-     * Ant class representing m
-     */
+    // Ant class
     private class Ant {
         private final Map<Cloudlet, Vm> solution;
         private double fitness;

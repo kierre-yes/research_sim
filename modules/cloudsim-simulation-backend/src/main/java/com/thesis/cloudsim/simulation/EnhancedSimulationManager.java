@@ -20,21 +20,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
 
-/**
- * Enhanced simulation manager for CloudSim experiments
- * 
- * @author Kier M.
- * 
- * Handles simulation lifecycle and CloudSim initialization
- * Thread-safe implementation for concurrent requests
- * 
- * Known issues:
- * - CloudSim static initialization causes issues with parallel runs
- * - Memory leak when running > 100 simulations sequentially
- * 
- * TODO: Implement simulation result caching
- * TODO: Add progress callbacks for long-running simulations
- */
+// Manages CloudSim simulation lifecycle
 public class EnhancedSimulationManager {
 
     private static final Object SIMULATION_LOCK = new Object();
@@ -46,26 +32,24 @@ public class EnhancedSimulationManager {
         this.request = request;
     }
 
-    /**
-     * Runs the simulation end-to-end and returns calculated metrics.
-     */
+    // Runs the simulation and returns metrics
     public SimulationResults run() throws IOException {
         synchronized (SIMULATION_LOCK) {
-        // CloudSim initialization
-        int num_user = 1; // Single user simulation
+        // Initialize CloudSim
+        int num_user = 1;
         java.util.Calendar calendar = java.util.Calendar.getInstance();
-        boolean trace_flag = false; // Disable trace for performance
+        boolean trace_flag = false;
         
         try {
-            // HACK: CloudSim uses static state, need to reset between runs
+            // Reset CloudSim state between runs
             try {
                 CloudSim.terminateSimulation();
-                Thread.sleep(200); // Empirically determined delay
+                Thread.sleep(200);
             } catch (Exception ignored) {
-                // First run - CloudSim not initialized yet
+                // First run
             }
             
-            // Force GC to clean up previous simulation objects
+            // Clean up previous simulation
             System.gc();
             Thread.sleep(100);
             
@@ -74,19 +58,19 @@ public class EnhancedSimulationManager {
             throw new IOException("Failed to initialize CloudSim", e);
         }
 
-        // 1) Create broker first to get broker ID
+        // Create broker
         CustomSchedulingBroker broker = null;
         try {
-            // Create algorithm parameters
+            // Set algorithm parameters
             AlgorithmParameters params = new AlgorithmParameters();
             params.setParameter(AlgorithmParameters.MAKESPAN_WEIGHT, request.getMakespanWeight());
             params.setParameter(AlgorithmParameters.COST_WEIGHT, request.getCostWeight());
             params.setParameter(AlgorithmParameters.ENERGY_WEIGHT, request.getEnergyWeight());
             params.setParameter(AlgorithmParameters.LOAD_BALANCE_WEIGHT, request.getLoadBalanceWeight());
             
-            // Configure algorithm parameters based on our experiments
+            // Configure algorithm-specific parameters
             if ("EPSO".equalsIgnoreCase(request.getOptimizationAlgorithm())) {
-                // PSO parameters tuned for cloud scheduling
+                // PSO parameters
                 params.setParameter(AlgorithmParameters.MAX_ITERATIONS, 100);
                 params.setParameter(AlgorithmParameters.POPULATION_SIZE, 30);
                 params.setParameter(AlgorithmParameters.INERTIA_WEIGHT, 0.9);
@@ -95,18 +79,18 @@ public class EnhancedSimulationManager {
                 params.setParameter(AlgorithmParameters.MAX_VELOCITY, 10.0);
                 params.setParameter(AlgorithmParameters.MIN_VELOCITY, -10.0);
             } else {
-                // ACO parameters from parameter tuning experiments
+                // ACO parameters
                 params.setParameter(AlgorithmParameters.MAX_ITERATIONS, 100);
                 params.setParameter(AlgorithmParameters.POPULATION_SIZE, 30);
                 params.setParameter(AlgorithmParameters.PHEROMONE_DECAY, 0.5);
-                params.setParameter(AlgorithmParameters.ALPHA, 1.0);  // Pheromone importance
-                params.setParameter(AlgorithmParameters.BETA, 2.0);   // Heuristic importance  
+                params.setParameter(AlgorithmParameters.ALPHA, 1.0);
+                params.setParameter(AlgorithmParameters.BETA, 2.0);
                 params.setParameter(AlgorithmParameters.INITIAL_PHEROMONE, 0.1);
                 params.setParameter(AlgorithmParameters.MIN_PHEROMONE, 0.01);
                 params.setParameter(AlgorithmParameters.MAX_PHEROMONE, 1.0);
             }
             
-            // Pass the request's algorithm type (EPSO/EACO) not the full name
+            // Get algorithm type
             String algorithmType = request.getOptimizationAlgorithm();
             broker = new CustomSchedulingBroker("Broker", algorithmType, params);
         } catch (Exception e) {
@@ -115,7 +99,7 @@ public class EnhancedSimulationManager {
         
         int brokerId = broker.getId();
         
-        // 2) Create datacenter
+        // Create datacenter
         DataCenterConfigurator configurator = new DataCenterConfigurator(
                 request.getNumHosts(),
                 request.getNumPesPerHost(),
@@ -130,44 +114,38 @@ public class EnhancedSimulationManager {
                 request.getVmBw(),
                 request.getVmSize());
 
-        // Unique name to avoid CloudSim entity conflicts
+        // Generate unique datacenter name
         String datacenterName = "DC_" + System.currentTimeMillis();
         Datacenter datacenter = configurator.configureDatacenter(datacenterName);
         
-        // 3) Create VMs with broker ID
+        // Create VMs
         List<Vm> vmList = configurator.createVms(brokerId);
         
-        // Debug output - comment out for production
+        // Debug output
         System.out.println("[DEBUG] Datacenter created with ID: " + datacenter.getId());
         System.out.println("[DEBUG] Broker created with ID: " + brokerId);
 
-        // 4) Load workload
+        // Load workload
         List<Cloudlet> cloudlets = loadCloudlets();
         System.out.println("[DEBUG] Created " + cloudlets.size() + " cloudlets");
         
-        // Set broker ID for cloudlets to ensure proper VM lookup
+        // Set broker ID for cloudlets
         for (Cloudlet cloudlet : cloudlets) {
             cloudlet.setUserId(brokerId);
         }
         
-        // Submit VMs and cloudlets to broker
+        // Submit resources to broker
         broker.submitGuestList(vmList);
         broker.submitCloudletList(cloudlets);
 
         // Start simulation
-        /*
-        System.out.println("[DEBUG] Starting simulation:");
-        System.out.println("  Broker ID: " + brokerId);
-        System.out.println("  VMs: " + vmList.size());
-        System.out.println("  Cloudlets: " + cloudlets.size());
-        */
         
         CloudSim.startSimulation();
 
-        // Collect results
+        // Get completed cloudlets
         List<Cloudlet> finished = broker.getCloudletReceivedList();
         
-        // Validate results
+        // Check if all cloudlets completed
         if (finished.size() != cloudlets.size()) {
             System.err.println("[WARNING] Not all cloudlets finished: " + 
                              finished.size() + " of " + cloudlets.size());
@@ -175,7 +153,7 @@ public class EnhancedSimulationManager {
         
         MetricsCalculator calculator = new MetricsCalculator(vmList, datacenter, finished, request.getOptimizationAlgorithm());
         
-        // Get fitness value from broker's algorithm if available
+        // Get fitness value from algorithm
         double fitness = 0.0;
         ISchedulingAlgorithm brokerAlgorithm = broker.getLastUsedAlgorithm();
         if (brokerAlgorithm != null && brokerAlgorithm.getMetrics() != null) {
@@ -186,40 +164,34 @@ public class EnhancedSimulationManager {
         }
         
         return calculator.buildResults(fitness);
-        } // end synchronized block
+        }
     }
 
-    /**
-     * Decide whether to load a CSV workload supplied by the user or to generate a
-     * synthetic workload on-the-fly.
-     */
+    // Load cloudlets from file or generate synthetic workload
     private List<Cloudlet> loadCloudlets() throws IOException {
         if (request.getWorkloadPath() != null && !request.isUseDefaultWorkload()) {
-            // User uploaded a CSV file
+            // Load from CSV file
             return new DatasetUtils().loadWorkload(request.getWorkloadPath());
         }
         // Otherwise fall back to synthetic workload
         return generateSyntheticWorkload();
     }
 
-    /**
-     * Generate synthetic workload for testing
-     * Based on Google cluster trace patterns
-     */
+    // Generate synthetic workload
     private List<Cloudlet> generateSyntheticWorkload() {
         List<Cloudlet> cloudlets = new ArrayList<>();
-        Random random = new Random(42); // Fixed seed for reproducibility
+        Random random = new Random(42);
 
         for (int i = 0; i < request.getNumCloudlets(); i++) {
-            // Bimodal distribution: 80% short tasks, 20% long tasks
+            // 80% short tasks, 20% long tasks
             long length;
             if (random.nextDouble() < 0.8) {
                 // Short task
                 length = SimulationConstants.MIN_CLOUDLET_LENGTH + 
                         random.nextInt(5000);
             } else {
-                // Long task - fixed to avoid IllegalArgumentException
-                length = 10000 + random.nextInt(20000); // Generate lengths between 10000-30000
+                // Long task
+                length = 10000 + random.nextInt(20000);
             }
             
             int pes = SimulationConstants.MIN_CLOUDLET_PES + 
@@ -232,7 +204,7 @@ public class EnhancedSimulationManager {
                       new UtilizationModelFull(),
                       new UtilizationModelFull(),
                       new UtilizationModelFull());
-            cloudlet.setUserId(-1); // Set user ID (-1 means it will be set by broker)
+            cloudlet.setUserId(-1);
             cloudlets.add(cloudlet);
         }
         return cloudlets;
