@@ -16,16 +16,7 @@ import java.util.ArrayList;
 import java.util.Map;
 import java.util.HashMap;
 
-/**
- * Calculates various performance metrics from simulation results
- * 
- * @author Kier M.
- * 
- * Cost model includes compute, storage, and network components
- * 
- * TODO: Add SLA violation metrics (optional)
- * TODO: Implement carbon footprint calculation
- */
+// Calculates performance metrics from simulation results
 public class MetricsCalculator {
 
     private final List<Vm> vms;
@@ -62,7 +53,7 @@ public class MetricsCalculator {
             }
         }
         
-        // Return 0 if no valid cloudlets
+        // Return 0 if no cloudlets
         return validCount > 0 ? sum / validCount : 0.0;
     }
 
@@ -81,19 +72,18 @@ public class MetricsCalculator {
     public double calculateResourceUtilization() {
         if (vms.isEmpty()) return 0.0;
         
-        // FIXME: This is a simplified calculation - should use actual runtime data
-        // For now using default utilization from constants
+        // Simplified calculation using default utilization
         double totalUtilization = 0.0;
         for (Vm vm : vms) {
             double vmMips = vm.getMips() * vm.getNumberOfPes();
-            // Assume default utilization for demo purposes
+            // Use default utilization
             totalUtilization += (vmMips > 0) ? SimulationConstants.DEFAULT_VM_UTILIZATION * 100 : 0.0;
         }
         return totalUtilization / vms.size();
     }
 
     public double calculateEnergyConsumption() {
-        // Enhanced energy model based on dynamic VM utilization and realistic power profiles
+        // Calculate energy consumption
         double totalEnergy = 0.0;
         double makespan = calculateMakespan();
         
@@ -105,12 +95,11 @@ public class MetricsCalculator {
         System.out.println("[DEBUG] Energy calc: makespan = " + makespan + " seconds");
         System.out.println("[DEBUG] Energy calc: number of hosts = " + datacenter.getHostList().size());
         
-        // Since VM.getHost() is null after simulation, we'll use a different approach
-        // Calculate based on actual cloudlet execution assuming round-robin VM-to-host mapping
+        // Map VMs to hosts using round-robin
         int hostsCount = datacenter.getHostList().size();
         if (hostsCount == 0) return 0.0;
         
-        // Map VMs to hosts using round-robin (same as VmAllocationPolicySimple)
+        // Round-robin VM to host mapping
         Map<Integer, List<Vm>> hostToVmsMap = new HashMap<>();
         for (int i = 0; i < vms.size(); i++) {
             int hostIndex = i % hostsCount;
@@ -123,19 +112,19 @@ public class MetricsCalculator {
             double hostMips = host.getTotalMips();
             List<Vm> hostVms = hostToVmsMap.getOrDefault(hostIndex, new ArrayList<>());
             
-            // Track time-based utilization for more accurate energy calculation
+            // Calculate host utilization
             Map<Vm, Double> vmUtilizations = new HashMap<>();
             double totalHostUtilization = 0.0;
             int activeVmCount = 0;
             
-            // Calculate per-VM utilization based on actual execution time
+            // Calculate VM utilization
             for (Vm vm : hostVms) {
                     List<Cloudlet> vmCloudlets = cloudletsForVm(vm);
                     double vmUtilization = 0.0;
                     double vmMips = vm.getMips() * vm.getNumberOfPes();
                     
                     for (Cloudlet c : vmCloudlets) {
-                        // Calculate actual CPU utilization based on cloudlet execution
+                        // Calculate CPU utilization
                         double execTime = c.getActualCPUTime();
                         double cloudletMips = c.getCloudletLength() / execTime;
                         vmUtilization += (cloudletMips / vmMips) * (execTime / makespan);
@@ -150,25 +139,26 @@ public class MetricsCalculator {
             }
             
             if (activeVmCount > 0) {
-                // Normalize host utilization
+                // Normalize utilization
                 totalHostUtilization = Math.min(1.0, totalHostUtilization);
                 
-                // Power model based on real server measurements
-                // Dell PowerEdge R740 specs (from our lab)
-                double idlePower = 86.7;  // Watts at idle
-                double maxPower = 247.0;  // Watts at 100% load
+                // Apply linear power model
+                double idlePower = 162.0;  // Watts at idle
+                double busyPower = 215.0;  // Watts at full load
                 
-                // Non-linear power model from Fan et al. (2007)
-                // P(u) = Pidle + (Pmax - Pidle) * (2u - u^r)
-                double r = 1.4;  // Calibrated from our measurements
-                double powerFactor = 2 * totalHostUtilization - Math.pow(totalHostUtilization, r);
-                double avgPower = idlePower + (maxPower - idlePower) * powerFactor;
+                // Calculate average power
+                double avgPower;
+                if (totalHostUtilization > 0) {
+                    avgPower = (busyPower - idlePower) * totalHostUtilization + idlePower;
+                } else {
+                    avgPower = 0.0;
+                }
                 
-                // Account for power state transitions and VM overhead
-                double vmOverhead = 1.0 + (0.02 * activeVmCount); // 2% overhead per VM
+                // Add VM overhead
+                double vmOverhead = 1.0 + (0.02 * activeVmCount);
                 avgPower *= vmOverhead;
                 
-                // Energy = Power * Time (convert to kWh)
+                // Convert to kWh
                 double hostEnergy = (avgPower * makespan) / (1000.0 * 3600.0);
                 totalEnergy += hostEnergy;
                 
@@ -177,37 +167,54 @@ public class MetricsCalculator {
             hostIndex++;
         }
         
-        return totalEnergy; // Returns energy in kWh
+        return totalEnergy;
     }
 
-    /**
-     * Calculate load imbalance using standard deviation of VM loads
-     * Lower values indicate better load distribution
-     */
+    // Calculate degree of load imbalance
     public double calculateLoadImbalance() {
         if (vms.isEmpty()) return 0.0;
         
-        List<Double> loads = new ArrayList<>();
+        // Get VM completion times
+        Map<Vm, Double> vmCompletionTimes = new HashMap<>();
         for (Vm vm : vms) {
-            double load = 0.0;
+            double completionTime = 0.0;
             for (Cloudlet c : finishedCloudlets) {
                 if (c.getGuestId() == vm.getId()) {
-                    load += c.getCloudletLength() / vm.getMips();
+                    // Add execution time of each cloudlet on this VM
+                    completionTime += c.getCloudletLength() / vm.getMips();
                 }
             }
-            loads.add(load);
+            vmCompletionTimes.put(vm, completionTime);
         }
         
-        // Calculate standard deviation
-        double mean = mean(loads);
-        double varianceSum = 0.0;
-        for (double l : loads) {
-            varianceSum += (l - mean) * (l - mean);
+        // If no VM has any load, return 0
+        if (vmCompletionTimes.isEmpty() || vmCompletionTimes.values().stream().allMatch(t -> t == 0.0)) {
+            return 0.0;
         }
         
-        // Return coefficient of variation for normalized metric
-        double stdDev = Math.sqrt(varianceSum / loads.size());
-        return mean > 0 ? stdDev / mean : 0.0;
+        // Calculate MaxTime, MinTime, and AverageTime
+        double maxTime = vmCompletionTimes.values().stream()
+            .mapToDouble(Double::doubleValue)
+            .max()
+            .orElse(0.0);
+        
+        double minTime = vmCompletionTimes.values().stream()
+            .mapToDouble(Double::doubleValue)
+            .min()
+            .orElse(0.0);
+        
+        double averageTime = vmCompletionTimes.values().stream()
+            .mapToDouble(Double::doubleValue)
+            .average()
+            .orElse(0.0);
+        
+        // Apply the DI formula: (MaxTime - MinTime) / AverageTime
+        // Avoid division by zero
+        if (averageTime <= 0.0) {
+            return 0.0;
+        }
+        
+        return (maxTime - minTime) / averageTime;
     }
 
     /**

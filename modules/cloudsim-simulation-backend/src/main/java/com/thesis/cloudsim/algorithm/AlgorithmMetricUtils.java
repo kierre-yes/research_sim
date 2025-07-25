@@ -9,16 +9,12 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-/**
- * Utility class that centralises common scheduling-metric calculations so we
- * avoid code duplication across EPSO, EACO and any future algorithm.  All
- * methods are <strong>static</strong> and rely only on core Java collections.
- */
+// Utility class for scheduling-metric calculations
 public final class AlgorithmMetricUtils {
 
-    private AlgorithmMetricUtils() { /* utility – no instances */ }
+    private AlgorithmMetricUtils() { }
 
-    /** Calculate makespan: the longest cumulative execution time of any VM. */
+    // Calculate makespan: the longest cumulative execution time of any VM.
     public static double makespan(Map<Cloudlet, Vm> schedule) {
         Map<Vm, Double> finish = new HashMap<>();
         for (Map.Entry<Cloudlet, Vm> e : schedule.entrySet()) {
@@ -28,7 +24,7 @@ public final class AlgorithmMetricUtils {
         return finish.values().stream().mapToDouble(Double::doubleValue).max().orElse(0.0);
     }
 
-    /** Rough monetary cost proportional to RAM capacity and exec time. */
+    // Calculate rough monetary cost based on RAM and execution time.
     public static double cost(Map<Cloudlet, Vm> schedule) {
         double cost = 0.0;
         for (Map.Entry<Cloudlet, Vm> e : schedule.entrySet()) {
@@ -39,10 +35,10 @@ public final class AlgorithmMetricUtils {
         return cost;
     }
     
-    /** Enhanced cost calculation with network-aware costs. */
+    // Enhanced cost calculation considering network costs.
     public static double enhancedCost(Map<Cloudlet, Vm> schedule, List<Cloudlet> cloudlets, List<Vm> vms) {
         double totalCost = 0.0;
-        // Cost constants (adjust based on your pricing model)
+        // Cost constants for pricing model
         final double CPU_COST_PER_MIPS_SEC = 0.00001;
         final double RAM_COST_PER_MB_SEC = 0.000005;
         final double STORAGE_COST_PER_MB_SEC = 0.000001;
@@ -71,7 +67,7 @@ public final class AlgorithmMetricUtils {
         return totalCost;
     }
     
-    /** Calculate cost efficiency (performance per dollar). */
+    // Calculate cost efficiency (performance per dollar).
     public static double costEfficiency(Map<Cloudlet, Vm> schedule, List<Cloudlet> cloudlets, List<Vm> vms) {
         double cost = enhancedCost(schedule, cloudlets, vms);
         if (cost <= 0) return 0.0;
@@ -79,47 +75,64 @@ public final class AlgorithmMetricUtils {
         double makespan = makespan(schedule);
         if (makespan <= 0) return 0.0;
         
-        // Performance metric: completed tasks per time unit
+        // Performance per task per time unit
         int finishedTasks = schedule.size();
         double performance = finishedTasks / makespan;
         
         return performance / cost;
     }
 
-    /** Energy in Watt-seconds based on host power model and exec time. */
+    // Calculate energy consumption in Watt-seconds.
     public static double energy(Map<Cloudlet, Vm> schedule) {
         double energy = 0.0;
         for (Map.Entry<Cloudlet, Vm> e : schedule.entrySet()) {
             double exec = e.getKey().getCloudletLength() / e.getValue().getMips();
             double cpuUtil = e.getValue().getTotalUtilizationOfCpu(CloudSim.clock());
-            // Simplified energy calculation for CloudSim 7.0
-            energy += exec * 100.0; // Basic power consumption estimate
+            energy += exec * 100.0;
         }
         return energy;
     }
 
-    /**
-     * Load-balance metric = standard deviation of workloads across VMs.
-     */
+    // Calculate Degree of Imbalance for load distribution.
     public static double loadBalance(Map<Cloudlet, Vm> schedule) {
-        Map<Vm, Double> loads = new HashMap<>();
+        Map<Vm, Double> vmCompletionTimes = new HashMap<>();
+        
+        // Completion time for each VM
         for (Map.Entry<Cloudlet, Vm> e : schedule.entrySet()) {
-            double l = e.getKey().getCloudletLength() / e.getValue().getMips();
-            loads.merge(e.getValue(), l, Double::sum);
+            double execTime = e.getKey().getCloudletLength() / e.getValue().getMips();
+            vmCompletionTimes.merge(e.getValue(), execTime, Double::sum);
         }
-        double[] arr = loads.values().stream().mapToDouble(Double::doubleValue).toArray();
-        double mean = Arrays.stream(arr).average().orElse(0.0);
-        double variance = 0.0;
-        for (double v : arr) {
-            variance += (v - mean) * (v - mean);
+        
+        // Return 0 if no load on VMs
+        if (vmCompletionTimes.isEmpty() || vmCompletionTimes.values().stream().allMatch(t -> t == 0.0)) {
+            return 0.0;
         }
-        variance /= arr.length > 0 ? arr.length : 1;
-        return Math.sqrt(variance);
+        
+        // Calculate MaxTime, MinTime, and AverageTime
+        double maxTime = vmCompletionTimes.values().stream()
+            .mapToDouble(Double::doubleValue)
+            .max()
+            .orElse(0.0);
+        
+        double minTime = vmCompletionTimes.values().stream()
+            .mapToDouble(Double::doubleValue)
+            .min()
+            .orElse(0.0);
+        
+        double averageTime = vmCompletionTimes.values().stream()
+            .mapToDouble(Double::doubleValue)
+            .average()
+            .orElse(0.0);
+        
+        // Use DI formula for imbalance
+        if (averageTime <= 0.0) {
+            return 0.0;
+        }
+        
+        return (maxTime - minTime) / averageTime;
     }
 
-    /**
-     * Linear normalisation to [0,1] using rough upper bounds.
-     */
+    // Linear normalization of metrics.
     public static double normalise(String type, double value, List<Cloudlet> cloudlets, List<Vm> vms) {
         double max = 1.0;
         switch (type) {
@@ -131,18 +144,16 @@ public final class AlgorithmMetricUtils {
                 max = cloudlets.stream().mapToDouble(Cloudlet::getCloudletLength).sum() * 0.1;
                 break;
             case "enhancedCost":
-                // Use a higher max for enhanced cost as it includes network costs
                 max = cloudlets.stream().mapToDouble(Cloudlet::getCloudletLength).sum() * 0.2;
                 break;
             case "costEfficiency":
-                // Cost efficiency is already normalized (performance/cost ratio)
                 max = 10.0;
                 break;
             case "energy":
                 max = cloudlets.stream().mapToDouble(Cloudlet::getCloudletLength).sum() * 100.0;
                 break;
             case "loadBalance":
-                max = cloudlets.stream().mapToDouble(Cloudlet::getCloudletLength).sum();
+                max = 1.0;
                 break;
         }
         return Math.max(0.0, Math.min(1.0, value / max));
