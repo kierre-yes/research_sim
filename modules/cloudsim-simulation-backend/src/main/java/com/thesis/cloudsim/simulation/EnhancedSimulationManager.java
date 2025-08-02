@@ -17,7 +17,9 @@ import org.cloudbus.cloudsim.Vm;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Random;
 
 // Manages CloudSim simulation lifecycle
@@ -142,6 +144,13 @@ public class EnhancedSimulationManager {
         
         CloudSim.startSimulation();
 
+        // Get VM-to-host mappings from broker
+        Map<Integer, Integer> vmToHostMap = broker.getVmToHostMapping();
+        System.out.println("[DEBUG] Retrieved VM-to-host mappings from broker: " + vmToHostMap.size() + " entries");
+        for (Map.Entry<Integer, Integer> entry : vmToHostMap.entrySet()) {
+            System.out.println("[DEBUG] VM " + entry.getKey() + " is on Host " + entry.getValue());
+        }
+
         // Get completed cloudlets
         List<Cloudlet> finished = broker.getCloudletReceivedList();
         
@@ -151,7 +160,7 @@ public class EnhancedSimulationManager {
                              finished.size() + " of " + cloudlets.size());
         }
         
-        MetricsCalculator calculator = new MetricsCalculator(vmList, datacenter, finished, request.getOptimizationAlgorithm());
+        MetricsCalculator calculator = new MetricsCalculator(vmList, datacenter, finished, request.getOptimizationAlgorithm(), vmToHostMap);
         
         // Get fitness value from algorithm
         double fitness = 0.0;

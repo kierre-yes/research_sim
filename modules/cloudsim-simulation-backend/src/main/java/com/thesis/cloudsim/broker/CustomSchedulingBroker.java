@@ -14,6 +14,8 @@ import org.cloudbus.cloudsim.Log;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.HashMap;
+import org.cloudbus.cloudsim.Host;
 
 // Custom broker for scheduling algorithms
 public class CustomSchedulingBroker extends DatacenterBroker {
@@ -21,6 +23,7 @@ public class CustomSchedulingBroker extends DatacenterBroker {
     private String algorithmName;
     private AlgorithmParameters parameters;
     private ISchedulingAlgorithm lastUsedAlgorithm;
+    private Map<Integer, Integer> vmToHostMapping = new HashMap<>();
 
     public CustomSchedulingBroker(String name, String algorithmName, AlgorithmParameters parameters) throws Exception {
         super(name);
@@ -82,6 +85,12 @@ public class CustomSchedulingBroker extends DatacenterBroker {
                     System.out.println("[DEBUG] VM " + vm.getId() + " - User ID: " + vm.getUserId() + 
                                      " - Host: " + (vm.getHost() != null ? vm.getHost().getId() : "null"));
                     
+                    // Capture VM-to-Host mapping while the host is still valid
+                    if (vm.getHost() != null) {
+                        vmToHostMapping.put(vm.getId(), vm.getHost().getId());
+                        System.out.println("[DEBUG] Captured VM " + vm.getId() + " -> Host " + vm.getHost().getId() + " mapping");
+                    }
+                    
                     if (!Log.isDisabled()) {
                         Log.printlnConcat(CloudSim.clock(), ": ", getName(), ": Sending ", 
                                 cloudlet.getClass().getSimpleName(), " #", cloudlet.getCloudletId(), 
@@ -109,6 +118,33 @@ public class CustomSchedulingBroker extends DatacenterBroker {
         }
     }
 
+    @Override
+    protected void processCloudletReturn(org.cloudbus.cloudsim.core.SimEvent ev) {
+        Cloudlet cloudlet = (Cloudlet) ev.getData();
+        if (!Log.isDisabled()) {
+            Log.printlnConcat(CloudSim.clock(), ": ", getName(), ": Cloudlet ", cloudlet.getCloudletId(), " received");
+        }
+        cloudlet.finalizeCloudlet();
+        getCloudletReceivedList().add(cloudlet);
+
+        cloudletsSubmitted--;
+
+        if (getCloudletList().isEmpty() && cloudletsSubmitted == 0) {
+            if (!Log.isDisabled()) {
+                Log.printlnConcat(CloudSim.clock(), ": ", getName(), ": All Cloudlets executed. Finishing...");
+            }
+            clearDatacenters();
+            finishExecution();
+        }
+    }
+
+    @Override
+    public void shutdownEntity() {
+        super.shutdownEntity();
+        // Don't clear vmToHostMapping here - we need it for metrics calculation after simulation
+        // vmToHostMapping.clear();
+    }
+
     // Update algorithm parameters
     public void updateParameters(AlgorithmParameters newParams) {
         this.parameters = newParams;
@@ -126,5 +162,10 @@ public class CustomSchedulingBroker extends DatacenterBroker {
     // Get the algorithm instance for metrics
     public ISchedulingAlgorithm getLastUsedAlgorithm() {
         return lastUsedAlgorithm;
+    }
+    
+    // Get the VM-to-Host mapping captured during cloudlet submission
+    public Map<Integer, Integer> getVmToHostMapping() {
+        return new HashMap<>(vmToHostMapping);  // Return a copy to prevent external modification
     }
 }

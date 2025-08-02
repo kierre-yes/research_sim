@@ -1,21 +1,51 @@
 function plotPaths = generateComparisonPlots(avgResponseTime, makespan, runId)
-    % generateComparisonPlots - Creates visualization plots for CloudSim results
-    % This function is called by MatlabIntegrationService.java
-    % 
-    % The backend passes these variables:
-    % - runId, algorithmName
-    % - results.summary.makespan, averageResponseTime, resourceUtilization, imbalanceDegree
-    % - results.summary.successRate, throughput
-    % - results.energyConsumption
-    % - results.vmUtilization (if available)
-    
-    % Get all variables from base workspace that were set by Java
+    % generateComparisonPlots - Enhanced visualization plots for CloudSim results
+    % Adapts modern visualization techniques inspired by revised design.
+
+    % Retrieve necessary variables from Java
     algorithmName = evalin('base', 'algorithmName');
     resourceUtilization = evalin('base', 'resourceUtilization');
     imbalanceDegree = evalin('base', 'imbalanceDegree');
     successRate = evalin('base', 'successRate');
     throughput = evalin('base', 'throughput');
     energyData = evalin('base', 'energyData');
+
+    % Define colors
+    mainColor = [0.2 0.6 0.8]; % Main color for charts
+    contrastColor = [0.9 0.4 0.1]; % Contrast color for comparison
+    neutralColor = [0 0 0]; % Neutral color for grids (changed to black)
+
+    % Create output directory
+    outputDir = fullfile('plots', runId);
+    if ~exist(outputDir, 'dir')
+        mkdir(outputDir);
+    end
+
+    % Initialize plot paths
+    plotPaths = {};
+
+    %% Enhanced Plot 1: Bar Chart with Values
+figure('Visible', 'off', 'Position', [100, 100, 1000, 600], 'Color', 'black');
+    metrics = categorical({'Makespan', 'Response Time', 'Utilization', 'Energy Cons.', 'Load Balance'});
+    metrics = reordercats(metrics, {'Makespan', 'Response Time', 'Utilization', 'Energy Cons.', 'Load Balance'});
+    values = [
+        makespan;
+        avgResponseTime;
+        resourceUtilization;
+        energyData / 1000;
+        (1 - imbalanceDegree) * 100 
+    ];
+    b = bar(metrics, values, 'FaceColor', mainColor);
+    text(b.XEndPoints, b.YEndPoints, string(round(values, 2)), 'HorizontalAlignment', 'center', 'VerticalAlignment', 'bottom');
+    ylabel('Values');
+    title(sprintf('%s - Key Metrics', algorithmName), 'FontSize', 14);
+    grid on;
+    set(gca, 'FontSize', 12, 'Color', 'black', 'XColor', 'white', 'YColor', 'white', 'GridColor', 'white');
+set(gcf, 'Color', 'black');
+    plotPath1 = fullfile(outputDir, sprintf('%s_metrics.png', lower(algorithmName)));
+    saveas(gcf, plotPath1);
+    plotPaths{end+1} = plotPath1;
+    close(gcf);
     
     % Check if VM utilization data exists
     hasVmData = evalin('base', 'exist(''vmUtilData'', ''var'')');
@@ -40,7 +70,7 @@ function plotPaths = generateComparisonPlots(avgResponseTime, makespan, runId)
     % The frontend will combine results from both algorithm runs
     
     %% Plot 1: Five Key Metrics Bar Chart
-    figure('Visible', 'off', 'Position', [100, 100, 1000, 600]);
+    figure('Visible', 'off', 'Position', [100, 100, 1000, 600], 'Color', 'black');
     
     % The 5 key metrics from your research
     metrics = categorical({'Makespan', 'Response Time', 'Resource Util.', 'Energy Cons.', 'Load Balance'});
@@ -67,7 +97,8 @@ function plotPaths = generateComparisonPlots(avgResponseTime, makespan, runId)
     ylabel('Metric Values');
     title(sprintf('%s Algorithm - Performance Metrics', algorithmName), 'FontSize', 14);
     grid on;
-    set(gca, 'FontSize', 12);
+    set(gca, 'FontSize', 12, 'Color', 'black', 'XColor', 'white', 'YColor', 'white', 'GridColor', 'white');
+    set(gcf, 'Color', 'black');
     
     % Save plot
     plotPath1 = fullfile(outputDir, sprintf('%s_metrics.png', lower(algorithmName)));
@@ -76,7 +107,7 @@ function plotPaths = generateComparisonPlots(avgResponseTime, makespan, runId)
     close(gcf);
     
     %% Plot 2: Detailed Performance Analysis
-    figure('Visible', 'off', 'Position', [100, 100, 1200, 800]);
+    figure('Visible', 'off', 'Position', [100, 100, 1200, 800], 'Color', 'black');
     
     % Subplot 1: Time Metrics
     subplot(2, 2, 1);
@@ -85,8 +116,9 @@ function plotPaths = generateComparisonPlots(avgResponseTime, makespan, runId)
     b1 = bar(timeLabels, timeMetrics);
     b1.FaceColor = [0.4 0.6 0.9];
     ylabel('Time (seconds)');
-    title('Time-based Metrics');
+    title('Time-based Metrics', 'Color', 'white');
     grid on;
+    set(gca, 'Color', 'black', 'XColor', 'white', 'YColor', 'white', 'GridColor', 'white');
     
     % Add values on bars
     text(b1.XEndPoints, b1.YEndPoints, string(round(timeMetrics, 2)), ...
@@ -99,8 +131,9 @@ function plotPaths = generateComparisonPlots(avgResponseTime, makespan, runId)
     b2 = bar(effLabels, effMetrics);
     b2.FaceColor = [0.4 0.8 0.6];
     ylabel('Value');
-    title('Efficiency Metrics');
+    title('Efficiency Metrics', 'Color', 'white');
     grid on;
+    set(gca, 'Color', 'black', 'XColor', 'white', 'YColor', 'white', 'GridColor', 'white');
     
     % Add values on bars
     text(b2.XEndPoints, b2.YEndPoints, string(round(effMetrics, 2)), ...
@@ -114,15 +147,16 @@ function plotPaths = generateComparisonPlots(avgResponseTime, makespan, runId)
     b3 = bar(energyLabels, energyMetrics);
     b3.FaceColor = [0.9 0.6 0.4];
     ylabel('Energy (mWh)');
-    title('Energy Consumption Analysis');
+    title('Energy Consumption Analysis', 'Color', 'white');
     grid on;
+    set(gca, 'Color', 'black', 'XColor', 'white', 'YColor', 'white', 'GridColor', 'white');
     
     % Subplot 4: Load Distribution
     subplot(2, 2, 4);
     balancePercentage = (1 - imbalanceDegree) * 100;
     loadMetrics = [balancePercentage; 100 - balancePercentage];
     pie(loadMetrics, {'Balanced Load', 'Imbalance'});
-    title('Load Distribution');
+    title('Load Distribution', 'Color', 'white');
     colormap([0.4 0.8 0.6; 0.9 0.4 0.4]);
     
     % Save plot
@@ -133,7 +167,7 @@ function plotPaths = generateComparisonPlots(avgResponseTime, makespan, runId)
     
     %% Plot 3: VM Utilization (if data available)
     if hasVmData && ~isempty(vmUtilData)
-        figure('Visible', 'off', 'Position', [100, 100, 1000, 600]);
+        figure('Visible', 'off', 'Position', [100, 100, 1000, 600], 'Color', 'black');
         
         % Extract CPU and RAM utilization
         cpuUtil = vmUtilData(:, 1);
@@ -146,9 +180,10 @@ function plotPaths = generateComparisonPlots(avgResponseTime, makespan, runId)
         xlabel('VM ID');
         ylabel('Utilization (%)');
         title(sprintf('%s - VM Resource Utilization', algorithmName));
-        legend({'CPU', 'RAM'}, 'Location', 'northwest');
+        legend({'CPU', 'RAM'}, 'Location', 'northwest', 'TextColor', 'white');
         grid on;
         ylim([0 100]);
+        set(gca, 'Color', 'black', 'XColor', 'white', 'YColor', 'white', 'GridColor', 'white');
         
         % Average utilization pie chart
         subplot(2, 1, 2);
@@ -158,8 +193,8 @@ function plotPaths = generateComparisonPlots(avgResponseTime, makespan, runId)
             {sprintf('CPU Used (%.1f%%)', avgCpu), ...
              sprintf('RAM Used (%.1f%%)', avgRam), ...
              'CPU Free', 'RAM Free'});
-        title('Average Resource Utilization');
-        colormap([0.8 0.2 0.2; 0.2 0.2 0.8; 0.9 0.7 0.7; 0.7 0.7 0.9]);
+        title('Average Resource Utilization', 'Color', 'white');
+        colormap([0.8 0.2 0.2; 0.2 0.2 0.8; 0 0 0; 0 0 0]);
         
         plotPath3 = fullfile(outputDir, sprintf('%s_vm_utilization.png', lower(algorithmName)));
         saveas(gcf, plotPath3);
@@ -168,14 +203,14 @@ function plotPaths = generateComparisonPlots(avgResponseTime, makespan, runId)
     end
     
     %% Plot 4: Enhanced Energy Consumption Analysis
-    figure('Visible', 'off', 'Position', [100, 100, 1200, 800]);
+    figure('Visible', 'off', 'Position', [100, 100, 1200, 800], 'Color', 'black');
     
     % Create more detailed energy analysis
     subplot(2, 2, 1);
     % Energy consumption by component
     energyComponents = [40, 35, 25]; % CPU, Memory, Network percentages
     pie(energyComponents, {'CPU (40%)', 'Memory (35%)', 'Network (25%)'});
-    title('Energy Consumption by Component');
+    title('Energy Consumption by Component', 'Color', 'white');
     colormap([0.8 0.2 0.2; 0.2 0.8 0.2; 0.2 0.2 0.8]);
     
     subplot(2, 2, 2);
@@ -185,8 +220,9 @@ function plotPaths = generateComparisonPlots(avgResponseTime, makespan, runId)
     plot(timePoints, energyOverTime, 'LineWidth', 2);
     xlabel('Time (seconds)');
     ylabel('Cumulative Energy (Wh)');
-    title('Energy Consumption Over Time');
+    title('Energy Consumption Over Time', 'Color', 'white');
     grid on;
+    set(gca, 'Color', 'black', 'XColor', 'white', 'YColor', 'white', 'GridColor', 'white');
     
     subplot(2, 2, 3);
     % Energy per VM
@@ -197,16 +233,18 @@ function plotPaths = generateComparisonPlots(avgResponseTime, makespan, runId)
         bar(1:vmCount, vmEnergy);
         xlabel('VM ID');
         ylabel('Energy (mWh)');
-        title('Energy Consumption per VM');
+        title('Energy Consumption per VM', 'Color', 'white');
         grid on;
+        set(gca, 'Color', 'black', 'XColor', 'white', 'YColor', 'white', 'GridColor', 'white');
     else
         % Default visualization
         vmEnergy = rand(10, 1) * 50 + 30;
         bar(1:10, vmEnergy);
         xlabel('VM ID');
         ylabel('Energy (mWh)');
-        title('Energy Consumption per VM (Simulated)');
+        title('Energy Consumption per VM (Simulated)', 'Color', 'white');
         grid on;
+        set(gca, 'Color', 'black', 'XColor', 'white', 'YColor', 'white', 'GridColor', 'white');
     end
     
     subplot(2, 2, 4);
@@ -215,8 +253,9 @@ function plotPaths = generateComparisonPlots(avgResponseTime, makespan, runId)
     powerValues = [energyData/makespan, (energyData/makespan)*0.7];
     bar(categories, powerValues);
     ylabel('Power (W)');
-    title(sprintf('Power Usage Effectiveness (PUE: %.2f)', powerValues(1)/powerValues(2)));
+    title(sprintf('Power Usage Effectiveness (PUE: %.2f)', powerValues(1)/powerValues(2)), 'Color', 'white');
     grid on;
+    set(gca, 'Color', 'black', 'XColor', 'white', 'YColor', 'white', 'GridColor', 'white');
     
     plotPath4 = fullfile(outputDir, sprintf('%s_energy_analysis.png', lower(algorithmName)));
     saveas(gcf, plotPath4);
@@ -224,7 +263,7 @@ function plotPaths = generateComparisonPlots(avgResponseTime, makespan, runId)
     close(gcf);
     
     %% Plot 5: Task Scheduling Timeline
-    figure('Visible', 'off', 'Position', [100, 100, 1200, 600]);
+    figure('Visible', 'off', 'Position', [100, 100, 1200, 600], 'Color', 'black');
     
     % Generate sample scheduling data
     numTasks = min(100, throughput * makespan);
@@ -243,11 +282,11 @@ function plotPaths = generateComparisonPlots(avgResponseTime, makespan, runId)
     
     xlabel('Time (seconds)');
     ylabel('VM ID');
-    title(sprintf('%s - Task Scheduling Timeline', algorithmName));
+    title(sprintf('%s - Task Scheduling Timeline', algorithmName), 'Color', 'white');
     xlim([0 makespan]);
     ylim([0 11]);
     grid on;
-    set(gca, 'YTick', 1:10);
+    set(gca, 'YTick', 1:10, 'Color', 'black', 'XColor', 'white', 'YColor', 'white', 'GridColor', 'white');
     
     plotPath5 = fullfile(outputDir, sprintf('%s_scheduling_timeline.png', lower(algorithmName)));
     saveas(gcf, plotPath5);
@@ -255,7 +294,7 @@ function plotPaths = generateComparisonPlots(avgResponseTime, makespan, runId)
     close(gcf);
     
     %% Plot 6: Enhanced Five-Dimension Radar Chart
-    figure('Visible', 'off', 'Position', [100, 100, 800, 800]);
+    figure('Visible', 'off', 'Position', [100, 100, 800, 800], 'Color', 'black');
     
     % Five core dimensions with proper normalization
     % 1. Makespan (lower is better → inverted)
@@ -309,7 +348,7 @@ function plotPaths = generateComparisonPlots(avgResponseTime, makespan, runId)
     
     % Add reference circles
     for r = 0.25:0.25:1
-        polarplot(angles, r*ones(size(angles)), ':', 'Color', [0.7 0.7 0.7], 'LineWidth', 0.5);
+        polarplot(angles, r*ones(size(angles)), ':', 'Color', [0 0 0], 'LineWidth', 0.5);
     end
     
     % Configure radar chart
