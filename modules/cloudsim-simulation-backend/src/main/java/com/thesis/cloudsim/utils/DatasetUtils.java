@@ -18,16 +18,24 @@ public class DatasetUtils {
      * First row (header) is skipped.
      */
     public List<Cloudlet> loadWorkload(String path) throws IOException {
+        return loadWorkload(path, -1); // No limit by default
+    }
+    
+    /**
+     * Load workload CSV with optional limit on number of cloudlets.
+     * @param path CSV file path
+     * @param maxCloudlets Maximum cloudlets to load (-1 for no limit)
+     */
+    public List<Cloudlet> loadWorkload(String path, int maxCloudlets) throws IOException {
         List<Cloudlet> cloudlets = new ArrayList<>();
         int cloudletId = 0; // Manual ID counter
         int lineNumber = 0;
-        int maxCloudlets = 100; // Limit to first 100 cloudlets for now
         
         try (BufferedReader br = new BufferedReader(new FileReader(path))) {
             String line = br.readLine(); // Skip header if present
             lineNumber++;
             
-            while ((line = br.readLine()) != null && cloudlets.size() < maxCloudlets) {
+            while ((line = br.readLine()) != null && (maxCloudlets < 0 || cloudlets.size() < maxCloudlets)) {
                 lineNumber++;
                 if (line.isBlank()) {
                     continue;

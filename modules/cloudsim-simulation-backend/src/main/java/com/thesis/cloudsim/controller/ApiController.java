@@ -1,12 +1,13 @@
 package com.thesis.cloudsim.controller;
 
 import com.thesis.cloudsim.dto.SimulationRequest;
+import com.thesis.cloudsim.dto.IterationResults;
 import com.thesis.cloudsim.metrics.SimulationResults;
-// Import the new, simplified simulation manager located in the "simulation" package
 import com.thesis.cloudsim.simulation.EnhancedSimulationManager;
-// Removed old SimulationManager import – we now use EnhancedSimulationManager (see above).
+import com.thesis.cloudsim.service.IterationService;
 import com.thesis.cloudsim.algorithm.ISchedulingAlgorithm;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -27,6 +28,9 @@ public class ApiController {
     private final ISchedulingAlgorithm epso;
     private final ISchedulingAlgorithm eaco;
     private final ObjectMapper objectMapper;
+    
+    @Autowired
+    private IterationService iterationService;
 
     public ApiController(@Qualifier("epso") ISchedulingAlgorithm epso,
                         @Qualifier("eaco") ISchedulingAlgorithm eaco,
@@ -39,84 +43,117 @@ public class ApiController {
     @PostMapping("/run")
     public ResponseEntity<?> runSimulation(@RequestBody SimulationRequest request) {
         try {
-            // Pick algorithm instance based on simple string comparison (no reflection)
-            ISchedulingAlgorithm algorithm;
-            if ("EPSO".equalsIgnoreCase(request.getOptimizationAlgorithm())) {
-                algorithm = epso;
-                System.out.println("[DEBUG] Using EPSO algorithm for simulation");
-            } else {
-                algorithm = eaco;
-                System.out.println("[DEBUG] Using EACO algorithm for simulation");
+            if (request.getIterations() > 1) {
+                return runIterations(request);
             }
-
-            // Create the simulation manager that builds the datacenter and runs CloudSim
+            
+            ISchedulingAlgorithm algorithm = getAlgorithm(request.getOptimizationAlgorithm());
             EnhancedSimulationManager manager = new EnhancedSimulationManager(algorithm, request);
             SimulationResults results = manager.run();
 
-            // Return HTTP 200 with JSON body
             return ResponseEntity.ok(results);
         } catch (Exception e) {
-            e.printStackTrace();
-            // Return detailed error message in response body
-            Map<String, String> errorResponse = new HashMap<>();
-            errorResponse.put("error", e.getClass().getSimpleName());
-            errorResponse.put("message", e.getMessage());
-            errorResponse.put("algorithm", request.getOptimizationAlgorithm());
-            return ResponseEntity.badRequest().body(errorResponse);
+            return createErrorResponse(e, request.getOptimizationAlgorithm(), null);
+        }
+    }
+    
+    @PostMapping("/run-iterations")
+    public ResponseEntity<?> runIterations(@RequestBody SimulationRequest request) {
+        try {
+            ISchedulingAlgorithm algorithm = getAlgorithm(request.getOptimizationAlgorithm());
+            System.out.println("[DEBUG] Running " + request.getIterations() + " iterations");
+            IterationResults results = iterationService.runIterations(algorithm, request);
+            return ResponseEntity.ok(results);
+        } catch (Exception e) {
+            return createErrorResponse(e, request.getOptimizationAlgorithm(), String.valueOf(request.getIterations()));
         }
     }
 
-    @PostMapping("/test-file-upload")
-    public ResponseEntity<?> testFileUpload(
-            @RequestParam("file") MultipartFile file,
-            @RequestParam("testParam") String testParam) {
-        Map<String, Object> response = new HashMap<>();
-        response.put("fileName", file.getOriginalFilename());
-        response.put("fileSize", file.getSize());
-        response.put("testParam", testParam);
-        response.put("message", "File received successfully");
-        return ResponseEntity.ok(response);
-    }
     
     @PostMapping("/run-with-file")
     public ResponseEntity<?> runSimulationWithFile(
             @RequestParam("file") MultipartFile file,
             @RequestParam Map<String, String> params) {
+        Path tempFile = null;
         try {
-            // Log incoming parameters for debugging
-            System.out.println("[DEBUG] /run-with-file called with params: " + params);
-            System.out.println("[DEBUG] File name: " + file.getOriginalFilename());
-            System.out.println("[DEBUG] File size: " + file.getSize());
-            
-            // Convert params to SimulationRequest
             SimulationRequest request = mapParamsToRequest(params);
-            
-            // Save uploaded file temporarily
-            Path tempFile = Files.createTempFile("workload", ".csv");
-            Files.copy(file.getInputStream(), tempFile, StandardCopyOption.REPLACE_EXISTING);
+            tempFile = saveUploadedFile(file);
             request.setWorkloadPath(tempFile.toString());
             
-            // Choose algorithm (simple ternary operator – beginner-friendly)
-            ISchedulingAlgorithm algorithm = "EPSO".equalsIgnoreCase(request.getOptimizationAlgorithm()) ? epso : eaco;
-            System.out.println("[DEBUG] Using algorithm: " + request.getOptimizationAlgorithm());
-
-            // Run the simulation with the uploaded workload file
+            if (request.getIterations() > 1) {
+                ISchedulingAlgorithm algorithm = getAlgorithm(request.getOptimizationAlgorithm());
+                IterationResults results = iterationService.runIterations(algorithm, request);
+                return ResponseEntity.ok(results);
+            }
+            
+            ISchedulingAlgorithm algorithm = getAlgorithm(request.getOptimizationAlgorithm());
             EnhancedSimulationManager manager = new EnhancedSimulationManager(algorithm, request);
             SimulationResults results = manager.run();
-
-            // Clean up the temporary CSV once done
-            Files.deleteIfExists(tempFile);
-
             return ResponseEntity.ok(results);
         } catch (Exception e) {
-            e.printStackTrace();
-            // Return detailed error message in response body
-            Map<String, String> errorResponse = new HashMap<>();
-            errorResponse.put("error", e.getClass().getSimpleName());
-            errorResponse.put("message", e.getMessage());
-            errorResponse.put("algorithm", params.get("optimizationAlgorithm"));
-            errorResponse.put("details", "Error in /run-with-file endpoint");
-            return ResponseEntity.badRequest().body(errorResponse);
+            return createErrorResponse(e, params.get("optimizationAlgorithm"), "with-file");
+        } finally {
+            cleanupTempFile(tempFile);
+        }
+    }
+    
+    @PostMapping("/run-iterations-with-file")
+    public ResponseEntity<?> runIterationsWithFile(
+            @RequestParam("file") MultipartFile file,
+            @RequestParam Map<String, String> params) {
+        Path tempFile = null;
+        try {
+            SimulationRequest request = mapParamsToRequest(params);
+            tempFile = saveUploadedFile(file);
+            request.setWorkloadPath(tempFile.toString());
+            
+            ISchedulingAlgorithm algorithm = getAlgorithm(request.getOptimizationAlgorithm());
+            IterationResults results = iterationService.runIterations(algorithm, request);
+            return ResponseEntity.ok(results);
+        } catch (Exception e) {
+            return createErrorResponse(e, params.get("optimizationAlgorithm"), params.get("iterations"));
+        } finally {
+            cleanupTempFile(tempFile);
+        }
+    }
+    
+    private ISchedulingAlgorithm getAlgorithm(String algorithmName) {
+        if ("EPSO".equalsIgnoreCase(algorithmName)) {
+            System.out.println("[DEBUG] Using EPSO algorithm");
+            return epso;
+        } else {
+            System.out.println("[DEBUG] Using EACO algorithm");
+            return eaco;
+        }
+    }
+    
+    private ResponseEntity<?> createErrorResponse(Exception e, String algorithm, String details) {
+        e.printStackTrace();
+        Map<String, String> errorResponse = new HashMap<>();
+        errorResponse.put("error", e.getClass().getSimpleName());
+        errorResponse.put("message", e.getMessage());
+        errorResponse.put("algorithm", algorithm);
+        if (details != null) {
+            errorResponse.put("details", details);
+        }
+        return ResponseEntity.badRequest().body(errorResponse);
+    }
+    
+    private Path saveUploadedFile(MultipartFile file) throws IOException {
+        System.out.println("[DEBUG] File name: " + file.getOriginalFilename());
+        System.out.println("[DEBUG] File size: " + file.getSize());
+        Path tempFile = Files.createTempFile("workload", ".csv");
+        Files.copy(file.getInputStream(), tempFile, StandardCopyOption.REPLACE_EXISTING);
+        return tempFile;
+    }
+    
+    private void cleanupTempFile(Path tempFile) {
+        if (tempFile != null) {
+            try {
+                Files.deleteIfExists(tempFile);
+            } catch (IOException e) {
+                System.err.println("Failed to delete temp file: " + e.getMessage());
+            }
         }
     }
 
@@ -127,7 +164,7 @@ public class ApiController {
         params.forEach((key, value) -> System.out.println("  " + key + " = " + value));
         
         try {
-            // Map all the parameters from the form data
+
             request.setOptimizationAlgorithm(params.get("optimizationAlgorithm"));
             request.setNumHosts(Integer.parseInt(params.getOrDefault("numHosts", "10")));
             request.setNumVMs(Integer.parseInt(params.getOrDefault("numVMs", "50")));
@@ -145,8 +182,9 @@ public class ApiController {
             request.setNumCloudlets(Integer.parseInt(params.getOrDefault("numCloudlets", "100")));
             request.setWorkloadType(params.getOrDefault("workloadType", "CSV"));
             request.setUseDefaultWorkload(Boolean.parseBoolean(params.getOrDefault("useDefaultWorkload", "false")));
+            request.setIterations(Integer.parseInt(params.getOrDefault("iterations", "1")));
             
-            System.out.println("[DEBUG] Successfully created SimulationRequest");
+            System.out.println("[DEBUG] Successfully created SimulationRequest with " + request.getIterations() + " iterations");
         } catch (NumberFormatException e) {
             System.err.println("[ERROR] Failed to parse numeric parameter: " + e.getMessage());
             throw e;

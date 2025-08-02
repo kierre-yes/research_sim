@@ -9,8 +9,8 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 public class SimulationRequest {
-    // Data Center Configuration
-    private String optimizationAlgorithm;  // "EPSO" or "EACO"
+    // data center config
+    private String optimizationAlgorithm;  // epso/eaco
     private int numHosts;
     private int numVMs;
     private int numPesPerHost;
@@ -25,19 +25,22 @@ public class SimulationRequest {
     private int vmSize;
     private String vmScheduler;
     
-    // Workload Configuration
+    // workload config
     private int numCloudlets;
-    private String workloadType;           // "CSV" or "Random"
+    private String workloadType;           // csv/rand
     private boolean useDefaultWorkload;
-    private String workloadPath;           // Path to the CSV workload file
+    private String workloadPath;           // path if csv
     
     // Algorithm-specific parameters (optional)
-    private double inertiaWeightStart;     // PSO parameter
-    private double alpha;                  // ACO parameter
+    private double inertiaWeightStart;     // pso param
+    private double alpha;                  // aco param
     
-    // Multi-objective optimization weights
+    // multi-objective opti weights
     private double makespanWeight = 0.25;
     private double costWeight = 0.25;
     private double energyWeight = 0.25;
     private double loadBalanceWeight = 0.25;
+    
+    // iteration 
+    private int iterations = 1;  // n times default 
 }
