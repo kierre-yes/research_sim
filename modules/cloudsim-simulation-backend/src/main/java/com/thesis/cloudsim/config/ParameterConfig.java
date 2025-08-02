@@ -56,11 +56,4 @@ public class ParameterConfig {
         return params;
     }
 
-    /**
-     * Create default config if file not found.
-     * @return Default AlgorithmParameters
-     */
-    public static AlgorithmParameters getDefault() {
-        return new AlgorithmParameters();  // Uses defaults from AlgorithmParameters class
-    }
 }
