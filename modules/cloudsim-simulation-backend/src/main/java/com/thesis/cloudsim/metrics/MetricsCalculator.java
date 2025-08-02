@@ -451,17 +451,6 @@ public double calculateResourceUtilization() {
         return vmUtilizations;
     }
 
-    /**
-     * Helper to compute mean of a List<Double> using simple loop.
-     */
-    private double mean(List<Double> values) {
-        if (values.isEmpty()) return 0.0;
-        double sum = 0.0;
-        for (double v : values) {
-            sum += v;
-        }
-        return sum / values.size();
-    }
 
     private List<SimulationResults.SchedulingLogEntry> generateSchedulingLog() {
         List<SimulationResults.SchedulingLogEntry> schedulingLog = new ArrayList<>();
