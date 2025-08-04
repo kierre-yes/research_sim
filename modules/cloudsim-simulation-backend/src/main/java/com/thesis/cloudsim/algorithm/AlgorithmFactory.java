@@ -22,10 +22,6 @@ public class AlgorithmFactory {
         }
     }
 
-    // Returns list of available algorithm names
-    public static java.util.Set<String> getAvailableAlgorithms() {
-        return java.util.Set.of("EPSO", "EnhancedPSO", "EACO", "EnhancedACO");
-    }
 
     // Creates default parameters for the specified algorithm
     public static AlgorithmParameters createDefaultParameters(String algorithmName) {
@@ -87,46 +83,4 @@ public class AlgorithmFactory {
         return params;
     }
 
-    // Validates algorithm parameters
-    public static boolean validateParameters(AlgorithmParameters parameters, String algorithmName) {
-        try {
-            // Check common parameters
-            if (parameters.getInt(AlgorithmParameters.MAX_ITERATIONS) <= 0) {
-                return false;
-            }
-            if (parameters.getInt(AlgorithmParameters.POPULATION_SIZE) <= 0) {
-                return false;
-            }
-            // Check weights sum to 1
-            double totalWeight = parameters.getDouble(AlgorithmParameters.MAKESPAN_WEIGHT) +
-                                 parameters.getDouble(AlgorithmParameters.COST_WEIGHT) +
-                                 parameters.getDouble(AlgorithmParameters.ENERGY_WEIGHT) +
-                                 parameters.getDouble(AlgorithmParameters.LOAD_BALANCE_WEIGHT);
-            if (Math.abs(totalWeight - 1.0) > 1e-6) {
-                return false;
-            }
-            // Validate algorithm-specific parameters
-            switch (algorithmName.toUpperCase()) {
-                case "EPSO":
-                case "ENHANCEDPSO":
-                    if (parameters.getDouble(AlgorithmParameters.COGNITIVE_COEFFICIENT) < 0 ||
-                        parameters.getDouble(AlgorithmParameters.SOCIAL_COEFFICIENT) < 0) {
-                        return false;
-                    }
-                    break;
-                case "EACO":
-                case "ENHANCEDACO":
-                    if (parameters.getDouble(AlgorithmParameters.ALPHA) < 0 ||
-                        parameters.getDouble(AlgorithmParameters.BETA) < 0 ||
-                        parameters.getDouble(AlgorithmParameters.PHEROMONE_DECAY) < 0 ||
-                        parameters.getDouble(AlgorithmParameters.PHEROMONE_DECAY) > 1) {
-                        return false;
-                    }
-                    break;
-            }
-            return true;
-        } catch (Exception e) {
-            return false;
-        }
-    }
 }

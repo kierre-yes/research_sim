@@ -2,13 +2,17 @@ package com.thesis.cloudsim.algorithm;
 
 import org.cloudbus.cloudsim.Cloudlet;
 import org.cloudbus.cloudsim.Vm;
-import org.cloudbus.cloudsim.Host;
+import com.thesis.cloudsim.config.AlgorithmDebugConfig;
+import org.springframework.beans.factory.annotation.Autowired;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Random;
 import java.util.concurrent.ThreadLocalRandom;
 import static com.thesis.cloudsim.algorithm.AlgorithmMetricUtils.*;
 
-// Enhanced Particle Swarm Optimization for task scheduling
 public class EnhancedPSO implements ISchedulingAlgorithm {
 
     private static final String ALGORITHM_NAME = "EPSO";
@@ -21,10 +25,8 @@ public class EnhancedPSO implements ISchedulingAlgorithm {
     private List<Vm> vms;
     private AlgorithmParameters parameters;
     
-    // Time-based scheduling placeholder
-    private double currentTime = 0.0;
-    
-    private static final boolean DEBUG = true;
+    @Autowired(required = false)
+    private AlgorithmDebugConfig debugConfig;
 
     public EnhancedPSO() {
         this.metrics = new HashMap<>();
@@ -42,9 +44,6 @@ public class EnhancedPSO implements ISchedulingAlgorithm {
         initializeParticles();
         
         // Main optimization loop
-        double prevBestFitness = Double.MAX_VALUE;
-        int stagnationCount = 0;
-        
         for (currentIteration = 0; currentIteration < parameters.getInt(AlgorithmParameters.MAX_ITERATIONS); currentIteration++) {
             updateParticles();
             updateGlobalBest();
@@ -52,7 +51,7 @@ public class EnhancedPSO implements ISchedulingAlgorithm {
             // Convergence check disabled
             
             // Progress output
-            if (DEBUG && currentIteration % 10 == 0) {
+            if (isDebugEnabled() && currentIteration % getDebugIterationInterval() == 0) {
                 System.out.println("[EPSO] Iteration " + currentIteration + 
                                  ", Best fitness: " + globalBest.getFitness());
             }
@@ -150,48 +149,73 @@ public class EnhancedPSO implements ISchedulingAlgorithm {
 
     private Map<Cloudlet, Vm> convertToScheduleMap(double[] position) {
         Map<Cloudlet, Vm> schedule = new HashMap<>();
-        
-        // Track VM usage
         int[] vmUsage = new int[vms.size()];
         
-        for (int i = 0; i < position.length && i < cloudlets.size(); i++) {
-            // Map to VM index
-            int idx = (int) Math.round(position[i]) % vms.size();
-            if (idx < 0) idx = 0;
-            
-            schedule.put(cloudlets.get(i), vms.get(idx));
-            vmUsage[idx]++;
-        }
+        // Initial assignment based on position
+        performInitialAssignment(position, schedule, vmUsage);
         
-        // Redistribute to unused VMs
+        // Load balancing: redistribute to unused VMs
+        performLoadBalancing(schedule, vmUsage);
+        
+        return schedule;
+    }
+    
+    private void performInitialAssignment(double[] position, Map<Cloudlet, Vm> schedule, int[] vmUsage) {
+        for (int i = 0; i < position.length && i < cloudlets.size(); i++) {
+            int vmIndex = mapPositionToVmIndex(position[i]);
+            schedule.put(cloudlets.get(i), vms.get(vmIndex));
+            vmUsage[vmIndex]++;
+        }
+    }
+    
+    private int mapPositionToVmIndex(double positionValue) {
+        int idx = (int) Math.round(positionValue) % vms.size();
+        return idx < 0 ? 0 : idx;
+    }
+    
+    private void performLoadBalancing(Map<Cloudlet, Vm> schedule, int[] vmUsage) {
         for (int vmIdx = 0; vmIdx < vms.size(); vmIdx++) {
-            if (vmUsage[vmIdx] == 0 && cloudlets.size() > vms.size()) {
-                // Find the most loaded VM and reassign one cloudlet
-                int maxLoadedVm = 0;
-                int maxLoad = vmUsage[0];
-                for (int j = 1; j < vms.size(); j++) {
-                    if (vmUsage[j] > maxLoad) {
-                        maxLoad = vmUsage[j];
-                        maxLoadedVm = j;
-                    }
-                }
-                
-                // Check if redistribution needed
-                if (maxLoad > 2) {
-                    // Find a cloudlet assigned to the most loaded VM
-                    for (Map.Entry<Cloudlet, Vm> entry : schedule.entrySet()) {
-                        if (entry.getValue().equals(vms.get(maxLoadedVm))) {
-                            schedule.put(entry.getKey(), vms.get(vmIdx));
-                            vmUsage[maxLoadedVm]--;
-                            vmUsage[vmIdx]++;
-                            break;
-                        }
-                    }
-                }
+            if (shouldRedistribute(vmUsage[vmIdx])) {
+                redistributeFromOverloadedVm(schedule, vmUsage, vmIdx);
+            }
+        }
+    }
+    
+    private boolean shouldRedistribute(int currentVmUsage) {
+        return currentVmUsage == 0 && cloudlets.size() > vms.size();
+    }
+    
+    private void redistributeFromOverloadedVm(Map<Cloudlet, Vm> schedule, int[] vmUsage, int targetVmIdx) {
+        int maxLoadedVmIdx = findMostLoadedVm(vmUsage);
+        
+        if (vmUsage[maxLoadedVmIdx] > 2) {
+            reassignCloudlet(schedule, vmUsage, maxLoadedVmIdx, targetVmIdx);
+        }
+    }
+    
+    private int findMostLoadedVm(int[] vmUsage) {
+        int maxLoadedVm = 0;
+        int maxLoad = vmUsage[0];
+        
+        for (int j = 1; j < vms.size(); j++) {
+            if (vmUsage[j] > maxLoad) {
+                maxLoad = vmUsage[j];
+                maxLoadedVm = j;
             }
         }
         
-        return schedule;
+        return maxLoadedVm;
+    }
+    
+    private void reassignCloudlet(Map<Cloudlet, Vm> schedule, int[] vmUsage, int fromVmIdx, int toVmIdx) {
+        for (Map.Entry<Cloudlet, Vm> entry : schedule.entrySet()) {
+            if (entry.getValue().equals(vms.get(fromVmIdx))) {
+                schedule.put(entry.getKey(), vms.get(toVmIdx));
+                vmUsage[fromVmIdx]--;
+                vmUsage[toVmIdx]++;
+                break;
+            }
+        }
     }
 
     private double calculateFitness(double[] position) {
@@ -216,72 +240,16 @@ public class EnhancedPSO implements ISchedulingAlgorithm {
              + parameters.getDouble(AlgorithmParameters.LOAD_BALANCE_WEIGHT) * lb;
     }
 
-    private double calculateMakespan(Map<Cloudlet, Vm> sched) {
-        Map<Vm, Double> fin = new HashMap<>();
-        for (Map.Entry<Cloudlet, Vm> e: sched.entrySet()) {
-            double t = e.getKey().getCloudletLength() / e.getValue().getMips();
-            fin.merge(e.getValue(), t, Double::sum);
-        }
-        return fin.values().stream().mapToDouble(Double::doubleValue).max().orElse(0.0);
-    }
-
-    private double calculateCost(Map<Cloudlet, Vm> sched) {
-        double cost = 0.0;
-        for (Map.Entry<Cloudlet, Vm> e: sched.entrySet()) {
-            double t = e.getKey().getCloudletLength() / e.getValue().getMips();
-            double hostRamCapacity = e.getValue().getHost().getGuestRamProvisioner().getRam();
-            cost += t * (hostRamCapacity * 0.001);
-        }
-        return cost;
-    }
-
-    private double calculateEnergy(Map<Cloudlet, Vm> sched) {
-        double energy = 0.0;
-        for (Map.Entry<Cloudlet, Vm> e: sched.entrySet()) {
-            double t = e.getKey().getCloudletLength() / e.getValue().getMips();
-            energy += t * 100.0;
-        }
-        return energy;
-    }
-
-    private double calculateLoadBalance(Map<Cloudlet, Vm> sched) {
-        Map<Vm, Double> loads = new HashMap<>();
-        for (Map.Entry<Cloudlet, Vm> e: sched.entrySet()) {
-            double l = e.getKey().getCloudletLength() / e.getValue().getMips();
-            loads.merge(e.getValue(), l, Double::sum);
-        }
-        double[] arr = loads.values().stream().mapToDouble(Double::doubleValue).toArray();
-        double mean = Arrays.stream(arr).average().orElse(0.0);
-        double var = Arrays.stream(arr).map(x -> (x - mean)*(x - mean)).average().orElse(0.0);
-        return Math.sqrt(var);
-    }
-
-    private double normalizeMetric(double val, String type) {
-        double max = 1.0;
-        switch (type) {
-            case "makespan":
-                max = cloudlets.stream().mapToDouble(Cloudlet::getCloudletLength).sum()
-                    / vms.stream().mapToDouble(Vm::getMips).min().orElse(1.0);
-                break;
-            case "cost":
-                max = cloudlets.stream().mapToDouble(Cloudlet::getCloudletLength).sum() * 0.1;
-                break;
-            case "energy":
-                max = cloudlets.stream().mapToDouble(Cloudlet::getCloudletLength).sum() * 100.0;
-                break;
-            case "loadBalance":
-                max = cloudlets.stream().mapToDouble(Cloudlet::getCloudletLength).sum();
-                break;
-        }
-        return Math.max(0.0, Math.min(1.0, (val - 0.0) / (max - 0.0)));
-    }
+    // These methods were removed as they duplicate functionality in AlgorithmMetricUtils
+    // Use AlgorithmMetricUtils.makespan(), cost(), energy(), loadBalance() instead
 
     private void calculateMetrics(Map<Cloudlet, Vm> sched) {
         metrics.clear();
-        metrics.put("makespan", calculateMakespan(sched));
-        metrics.put("cost", calculateCost(sched));
-        metrics.put("energy", calculateEnergy(sched));
-        metrics.put("loadBalance", calculateLoadBalance(sched));
+        metrics.put("makespan", AlgorithmMetricUtils.makespan(sched));
+        metrics.put("cost", AlgorithmMetricUtils.cost(sched));
+        metrics.put("energy", AlgorithmMetricUtils.energy(sched));
+        metrics.put("loadBalance", AlgorithmMetricUtils.loadBalance(sched));
+        metrics.put("responseTime", AlgorithmMetricUtils.responseTime(sched));
         metrics.put("iterations", (double) currentIteration);
         metrics.put("converged", currentIteration < parameters.getInt(AlgorithmParameters.MAX_ITERATIONS) ? 1.0 : 0.0);
         
@@ -290,12 +258,13 @@ public class EnhancedPSO implements ISchedulingAlgorithm {
         metrics.put("fitness", fitness);
         
         // Log the final metrics for debugging
-        if (DEBUG) {
+        if (isDebugEnabled()) {
             System.out.println("[EPSO] Final Metrics:");
             System.out.println("  Makespan: " + metrics.get("makespan"));
             System.out.println("  Cost: " + metrics.get("cost"));
             System.out.println("  Energy: " + metrics.get("energy"));
             System.out.println("  Load Balance: " + metrics.get("loadBalance"));
+            System.out.println("  Response Time: " + metrics.get("responseTime"));
             System.out.println("  Fitness: " + fitness);
         }
     }
@@ -327,6 +296,14 @@ public class EnhancedPSO implements ISchedulingAlgorithm {
         globalBest = null;
         currentIteration = 0;
         metrics.clear();
+    }
+    
+    private boolean isDebugEnabled() {
+        return debugConfig != null && debugConfig.isEnabled();
+    }
+    
+    private int getDebugIterationInterval() {
+        return debugConfig != null ? debugConfig.getIterationInterval() : 10;
     }
 
     private static class Particle {

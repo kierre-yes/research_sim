@@ -17,7 +17,17 @@ import java.util.Map;
 import java.util.HashMap;
 import org.cloudbus.cloudsim.Host;
 
-// Custom broker for scheduling algorithms
+/**
+ * Custom Scheduling Broker
+ * 
+ * Implements a scheduling broker that applies custom algorithms for cloudlet-to-VM mapping 
+ * using the EPSO and EACO algorithms.
+ * 
+ * @author [Kier]
+ * @version 1.0
+ * @since 2025-07-10
+ * 
+ */
 public class CustomSchedulingBroker extends DatacenterBroker {
 
     private String algorithmName;
@@ -31,13 +41,6 @@ public class CustomSchedulingBroker extends DatacenterBroker {
         this.parameters = parameters;
     }
 
-    // Allows switching algorithm at runtime
-    public void setSchedulingAlgorithm(ISchedulingAlgorithm algorithm) {
-        if (algorithm == null) {
-            throw new IllegalArgumentException("algorithm must not be null");
-        }
-        this.algorithmName = algorithm.getAlgorithmName();
-    }
 
     // Maps cloudlets to VMs using the selected algorithm
     private Map<Cloudlet, Vm> customCloudletMapper(List<Cloudlet> cloudletList, List<Vm> vmList) {
@@ -141,19 +144,8 @@ public class CustomSchedulingBroker extends DatacenterBroker {
     @Override
     public void shutdownEntity() {
         super.shutdownEntity();
-        // Don't clear vmToHostMapping here - we need it for metrics calculation after simulation
-        // vmToHostMapping.clear();
     }
 
-    // Update algorithm parameters
-    public void updateParameters(AlgorithmParameters newParams) {
-        this.parameters = newParams;
-    }
-    
-    // CloudSim 7.0 compatibility methods
-    public void setVmDestructionDelay(double delay) {
-        // Not supported in CloudSim 7.0
-    }
     
     public List<Cloudlet> getCloudletFinishedList() {
         return getCloudletReceivedList();
@@ -166,6 +158,6 @@ public class CustomSchedulingBroker extends DatacenterBroker {
     
     // Get the VM-to-Host mapping captured during cloudlet submission
     public Map<Integer, Integer> getVmToHostMapping() {
-        return new HashMap<>(vmToHostMapping);  // Return a copy to prevent external modification
+        return new HashMap<>(vmToHostMapping);  
     }
 }

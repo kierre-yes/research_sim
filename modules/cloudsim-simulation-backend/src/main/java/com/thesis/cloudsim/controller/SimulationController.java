@@ -15,7 +15,7 @@ import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 
-// REST controller for simulation endpoints
+
 @RestController
 @RequestMapping("/api/simulate")
 public class SimulationController {
@@ -39,7 +39,7 @@ public class SimulationController {
     public SimulationResults runSimulationRaw(@RequestBody SimulationRequest request) throws IOException {
         logger.debug("Received simulation request for algorithm: {}", request.getOptimizationAlgorithm());
         
-        // Choose algorithm based on request
+
         ISchedulingAlgorithm algorithm;
         if ("EPSO".equalsIgnoreCase(request.getOptimizationAlgorithm())) {
             algorithm = epso;
@@ -49,7 +49,7 @@ public class SimulationController {
             logger.debug("Using EACO algorithm");
         }
         
-        // Start the simulation
+
         long startTime = System.currentTimeMillis();
         EnhancedSimulationManager manager = new EnhancedSimulationManager(algorithm, request);
         SimulationResults results = manager.run();
@@ -61,7 +61,7 @@ public class SimulationController {
     }
 
     /**
-     * Run simulation with MATLAB visualization support
+
      */
     @PostMapping("/with-plots")
     public ResponseEntity<Object> runSimulationWithPlots(@RequestBody SimulationRequest request) throws IOException {
@@ -76,11 +76,11 @@ public class SimulationController {
                     ));
         }
         
-        // Determine which algorithm to use
+
         ISchedulingAlgorithm algorithm = "EPSO".equalsIgnoreCase(request.getOptimizationAlgorithm()) ? epso : eaco;
         EnhancedSimulationManager manager = new EnhancedSimulationManager(algorithm, request);
         
-        // Check if MATLAB is ready
+
         if (!matlabService.isReady()) {
             logger.info("MATLAB engine warming up...");
             return ResponseEntity
@@ -96,7 +96,7 @@ public class SimulationController {
             return ResponseEntity.ok(out);
         } catch (Exception e) {
             logger.error("Error during MATLAB processing", e);
-            // Use raw results if MATLAB fails
+
             throw e;
         }
     }
