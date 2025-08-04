@@ -9,12 +9,7 @@ public final class SimulationConstants {
     }
     
     // Cost constants
-    public static final double COST_PER_RAM_UNIT = 0.001;
     public static final double COST_PER_HOUR = 0.1;
-    
-    // Utilization defaults
-    public static final double DEFAULT_VM_UTILIZATION = 0.5;
-    public static final double DEFAULT_HOST_UTILIZATION = 0.5;
     
     // Workload ranges
     public static final int MIN_CLOUDLET_LENGTH = 1000;

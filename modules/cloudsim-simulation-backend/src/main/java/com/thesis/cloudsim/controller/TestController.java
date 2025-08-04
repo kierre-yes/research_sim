@@ -12,14 +12,14 @@ import java.util.HashMap;
 import java.util.Map;
 
 @RestController
-@RequestMapping("/api/test")
+@RequestMapping("/api")
 @CrossOrigin(origins = {"http://localhost:3000", "http://localhost:5173"})
 public class TestController {
 
     @Autowired(required = false)
     private MatlabIntegrationService matlabService;
 
-    @GetMapping("/matlab-status")
+    @GetMapping("/matlab/status")
     public ResponseEntity<Map<String, Object>> checkMatlabStatus() {
         Map<String, Object> status = new HashMap<>();
         

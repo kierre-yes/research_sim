@@ -3,7 +3,12 @@ package com.thesis.cloudsim.algorithm;
 import org.cloudbus.cloudsim.Cloudlet;
 import org.cloudbus.cloudsim.Vm;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Random;
 import java.util.concurrent.ThreadLocalRandom;
 import static com.thesis.cloudsim.algorithm.AlgorithmMetricUtils.*;
 
@@ -41,8 +46,6 @@ public class EnhancedACO implements ISchedulingAlgorithm {
         this.vms = new ArrayList<>(vms);
         this.parameters = parameters;
         
-        // System.out.println("[EACO] Starting with " + cloudlets.size() + " cloudlets, " + vms.size() + " VMs");
-        
         initializeMatrices();
         initializeAnts();
         
@@ -51,8 +54,6 @@ public class EnhancedACO implements ISchedulingAlgorithm {
             constructSolutions();
             updateBestSolution();
             updatePheromones();
-            
-// Debug output example removed for clarity
         }
         
         calculateMetrics(bestSolution);
@@ -179,37 +180,7 @@ public class EnhancedACO implements ISchedulingAlgorithm {
         return Math.max(rhoMin, Math.min(rhoMax, adaptiveRate));
     }
     
-    private double calculateSolutionDiversity() {
-        if (ants.size() <= 1) return 1.0;
-        
-        double totalDifference = 0.0;
-        int comparisons = 0;
-        
-        for (int i = 0; i < ants.size(); i++) {
-            for (int j = i + 1; j < ants.size(); j++) {
-                totalDifference += calculateSolutionDifference(ants.get(i), ants.get(j));
-                comparisons++;
-            }
-        }
-        
-        return comparisons > 0 ? totalDifference / comparisons : 1.0;
-    }
     
-    private double calculateSolutionDifference(Ant ant1, Ant ant2) {
-        Map<Cloudlet, Vm> solution1 = ant1.getSolution();
-        Map<Cloudlet, Vm> solution2 = ant2.getSolution();
-        
-        int differences = 0;
-        for (Cloudlet cloudlet : cloudlets) {
-            Vm vm1 = solution1.get(cloudlet);
-            Vm vm2 = solution2.get(cloudlet);
-            if (vm1 != null && vm2 != null && !vm1.equals(vm2)) {
-                differences++;
-            }
-        }
-        
-        return (double) differences / cloudlets.size();
-    }
     
     private void depositPheromones(Ant ant) {
         double pheromoneDeposit = 1.0 / (1.0 + ant.getFitness());
@@ -290,99 +261,16 @@ public class EnhancedACO implements ISchedulingAlgorithm {
         return fitness;
     }
     
-    private double calculateMakespan(Map<Cloudlet, Vm> schedule) {
-        Map<Vm, Double> vmFinishTimes = new HashMap<>();
-        
-        for (Map.Entry<Cloudlet, Vm> entry : schedule.entrySet()) {
-            Cloudlet cloudlet = entry.getKey();
-            Vm vm = entry.getValue();
-            
-            double executionTime = cloudlet.getCloudletLength() / vm.getMips();
-            double currentFinish = vmFinishTimes.getOrDefault(vm, 0.0);
-            vmFinishTimes.put(vm, currentFinish + executionTime);
-        }
-        
-        return vmFinishTimes.values().stream().mapToDouble(Double::doubleValue).max().orElse(0.0);
-    }
-    
-    private double calculateCost(Map<Cloudlet, Vm> schedule) {
-        double totalCost = 0.0;
-        
-        for (Map.Entry<Cloudlet, Vm> entry : schedule.entrySet()) {
-            Cloudlet cloudlet = entry.getKey();
-            Vm vm = entry.getValue();
-            
-            double executionTime = cloudlet.getCloudletLength() / vm.getMips();
-            double hostRamCapacity = vm.getHost().getGuestRamProvisioner().getRam();
-            double vmCostPerSecond = hostRamCapacity * 0.001;
-            totalCost += executionTime * vmCostPerSecond;
-        }
-        
-        return totalCost;
-    }
-    
-    private double calculateEnergy(Map<Cloudlet, Vm> schedule) {
-        double totalEnergy = 0.0;
-        
-        for (Map.Entry<Cloudlet, Vm> entry : schedule.entrySet()) {
-            Cloudlet cloudlet = entry.getKey();
-            Vm vm = entry.getValue();
-            
-            double executionTime = cloudlet.getCloudletLength() / vm.getMips();
-            double powerConsumption = 100.0;
-            totalEnergy += executionTime * powerConsumption;
-        }
-        
-        return totalEnergy;
-    }
-    
-    private double calculateLoadBalance(Map<Cloudlet, Vm> schedule) {
-        Map<Vm, Double> vmLoads = new HashMap<>();
-        
-        for (Map.Entry<Cloudlet, Vm> entry : schedule.entrySet()) {
-            Cloudlet cloudlet = entry.getKey();
-            Vm vm = entry.getValue();
-            
-            double load = cloudlet.getCloudletLength() / vm.getMips();
-            vmLoads.put(vm, vmLoads.getOrDefault(vm, 0.0) + load);
-        }
-        
-        double[] loads = vmLoads.values().stream().mapToDouble(Double::doubleValue).toArray();
-        double mean = Arrays.stream(loads).average().orElse(0.0);
-        double variance = Arrays.stream(loads).map(x -> Math.pow(x - mean, 2)).average().orElse(0.0);
-        
-        return Math.sqrt(variance);
-    }
-    
-    private double normalizeMetric(double value, String metricType) {
-        double minValue = 0.0;
-        double maxValue = 1.0;
-        
-        switch (metricType) {
-            case "makespan":
-                maxValue = cloudlets.stream().mapToDouble(Cloudlet::getCloudletLength).sum() / 
-                          vms.stream().mapToDouble(Vm::getMips).min().orElse(1.0);
-                break;
-            case "cost":
-                maxValue = cloudlets.stream().mapToDouble(Cloudlet::getCloudletLength).sum() * 0.1;
-                break;
-            case "energy":
-                maxValue = cloudlets.stream().mapToDouble(Cloudlet::getCloudletLength).sum() * 100.0;
-                break;
-            case "loadBalance":
-                maxValue = cloudlets.stream().mapToDouble(Cloudlet::getCloudletLength).sum();
-                break;
-        }
-        
-        return Math.max(0.0, Math.min(1.0, (value - minValue) / (maxValue - minValue)));
-    }
+    // These methods were removed as they duplicate functionality in AlgorithmMetricUtils
+    // Use AlgorithmMetricUtils.makespan(), cost(), energy(), loadBalance() instead
     
     private void calculateMetrics(Map<Cloudlet, Vm> schedule) {
         metrics.clear();
-        metrics.put("makespan", calculateMakespan(schedule));
-        metrics.put("cost", calculateCost(schedule));
-        metrics.put("energy", calculateEnergy(schedule));
-        metrics.put("loadBalance", calculateLoadBalance(schedule));
+        metrics.put("makespan", AlgorithmMetricUtils.makespan(schedule));
+        metrics.put("cost", AlgorithmMetricUtils.cost(schedule));
+        metrics.put("energy", AlgorithmMetricUtils.energy(schedule));
+        metrics.put("loadBalance", AlgorithmMetricUtils.loadBalance(schedule));
+        metrics.put("responseTime", AlgorithmMetricUtils.responseTime(schedule));
         metrics.put("iterations", (double) currentIteration);
         metrics.put("converged", currentIteration < parameters.getInt(AlgorithmParameters.MAX_ITERATIONS) ? 1.0 : 0.0);
         metrics.put("pheromoneConvergence", calculatePheromoneConvergence());
@@ -391,13 +279,21 @@ public class EnhancedACO implements ISchedulingAlgorithm {
         double fitness = calculateFitness(schedule);
         metrics.put("fitness", fitness);
         
-        // Debug output
-        System.out.println("[EACO] Final Metrics:");
-        System.out.println("  Makespan: " + metrics.get("makespan"));
-        System.out.println("  Cost: " + metrics.get("cost"));
-        System.out.println("  Energy: " + metrics.get("energy"));
-        System.out.println("  Load Balance: " + metrics.get("loadBalance"));
-        System.out.println("  Fitness: " + fitness);
+        // Debug output - should be controlled by configuration
+        if (shouldDebug()) {
+            System.out.println("[EACO] Final Metrics:");
+            System.out.println("  Makespan: " + metrics.get("makespan"));
+            System.out.println("  Cost: " + metrics.get("cost"));
+            System.out.println("  Energy: " + metrics.get("energy"));
+            System.out.println("  Load Balance: " + metrics.get("loadBalance"));
+            System.out.println("  Response Time: " + metrics.get("responseTime"));
+            System.out.println("  Fitness: " + fitness);
+        }
+    }
+    
+    private boolean shouldDebug() {
+        // For now, return false. In future, this should be configured like in EnhancedPSO
+        return false;
     }
     
     private double calculatePheromoneConvergence() {

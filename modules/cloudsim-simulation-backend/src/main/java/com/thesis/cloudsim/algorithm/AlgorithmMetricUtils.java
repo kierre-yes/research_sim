@@ -82,22 +82,86 @@ public final class AlgorithmMetricUtils {
         return performance / cost;
     }
 
-    // Calculate energy consumption in Watt-seconds.
+
     public static double energy(Map<Cloudlet, Vm> schedule) {
-        double energy = 0.0;
-        for (Map.Entry<Cloudlet, Vm> e : schedule.entrySet()) {
-            double exec = e.getKey().getCloudletLength() / e.getValue().getMips();
-            double cpuUtil = e.getValue().getTotalUtilizationOfCpu(CloudSim.clock());
-            energy += exec * 100.0;
+
+        final double P_MAX = 215.0;    // Maximum power consumption (Watts)
+        final double P_IDLE = 162.0;   // Idle power consumption (Watts)
+        final double ALPHA = 1.4;      // Non-linear scaling factor from research
+        
+        double totalEnergy = 0.0;
+        Map<Vm, Double> vmWorkloads = new HashMap<>();
+        
+
+        for (Map.Entry<Cloudlet, Vm> entry : schedule.entrySet()) {
+            Cloudlet cloudlet = entry.getKey();
+            Vm vm = entry.getValue();
+            double execTime = cloudlet.getCloudletLength() / vm.getMips();
+            vmWorkloads.merge(vm, execTime, Double::sum);
         }
-        return energy;
+        
+
+        for (Map.Entry<Vm, Double> entry : vmWorkloads.entrySet()) {
+            Vm vm = entry.getKey();
+            double workloadTime = entry.getValue();
+            
+
+            double utilization = Math.min(1.0, workloadTime / makespan(schedule));
+            
+
+            double power;
+            if (utilization > 0) {
+                power = (P_MAX - P_IDLE) * Math.pow(utilization, ALPHA) + P_IDLE;
+            } else {
+                power = 0; // VM is off
+            }
+            
+
+            totalEnergy += power * workloadTime;
+        }
+        
+        return totalEnergy;
     }
 
-    // Calculate Degree of Imbalance for load distribution.
+
+    public static double responseTime(Map<Cloudlet, Vm> schedule) {
+        if (schedule.isEmpty()) return 0.0;
+        
+        double totalResponseTime = 0.0;
+        Map<Vm, Double> vmCurrentTime = new HashMap<>();
+        
+
+        List<Cloudlet> orderedCloudlets = new ArrayList<>(schedule.keySet());
+        orderedCloudlets.sort((c1, c2) -> Long.compare(c1.getCloudletId(), c2.getCloudletId()));
+        
+        for (Cloudlet cloudlet : orderedCloudlets) {
+            Vm vm = schedule.get(cloudlet);
+            
+
+            double vmTime = vmCurrentTime.getOrDefault(vm, 0.0);
+            
+
+            double waitingTime = vmTime;
+            
+
+            double executionTime = cloudlet.getCloudletLength() / vm.getMips();
+
+            double responseTime = waitingTime + executionTime;
+            totalResponseTime += responseTime;
+            
+
+            vmCurrentTime.put(vm, vmTime + executionTime);
+        }
+        
+
+        return totalResponseTime / schedule.size();
+    }
+    
+
     public static double loadBalance(Map<Cloudlet, Vm> schedule) {
         Map<Vm, Double> vmCompletionTimes = new HashMap<>();
         
-        // Completion time for each VM
+
         for (Map.Entry<Cloudlet, Vm> e : schedule.entrySet()) {
             double execTime = e.getKey().getCloudletLength() / e.getValue().getMips();
             vmCompletionTimes.merge(e.getValue(), execTime, Double::sum);
@@ -154,6 +218,11 @@ public final class AlgorithmMetricUtils {
                 break;
             case "loadBalance":
                 max = 1.0;
+                break;
+            case "responseTime":
+                double totalLength = cloudlets.stream().mapToDouble(Cloudlet::getCloudletLength).sum();
+                double slowestMips = vms.stream().mapToDouble(Vm::getMips).min().orElse(1.0);
+                max = totalLength / slowestMips;
                 break;
         }
         return Math.max(0.0, Math.min(1.0, value / max));

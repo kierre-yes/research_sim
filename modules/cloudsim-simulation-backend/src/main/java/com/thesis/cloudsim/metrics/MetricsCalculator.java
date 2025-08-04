@@ -10,14 +10,27 @@ import com.thesis.cloudsim.algorithm.AlgorithmMetricUtils;
 import org.cloudbus.cloudsim.Vm;
 import org.cloudbus.cloudsim.Host;
 import org.cloudbus.cloudsim.power.PowerHost;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.List;
 import java.util.ArrayList;
 import java.util.Map;
 import java.util.HashMap;
 
-// Calculates performance metrics from simulation results
+/**
+ * Performance Metrics Calculator for CloudSim Simulations
+ * 
+ * This class calculates key performance metrics including makespan, resource utilization,
+ * energy consumption, and load balance.
+ * @author [Kier]
+ * @version 1.0
+ * @since 2025-07-11
+ * 
+ */
 public class MetricsCalculator {
+    
+    private static final Logger logger = LoggerFactory.getLogger(MetricsCalculator.class);
 
     private final List<Vm> vms;
     private final Datacenter datacenter;
