@@ -179,27 +179,27 @@ public class EnhancedSimulationManager {
     // Load cloudlets from file or generate synthetic workload
     private List<Cloudlet> loadCloudlets() throws IOException {
         if (request.getWorkloadPath() != null && !request.isUseDefaultWorkload()) {
-            // Load from CSV file
-            return new DatasetUtils().loadWorkload(request.getWorkloadPath());
+
+            return new DatasetUtils().loadWorkload(request.getWorkloadPath(), request.getNumCloudlets());
         }
-        // Otherwise fall back to synthetic workload
+
         return generateSyntheticWorkload();
     }
 
-    // Generate synthetic workload
+
     private List<Cloudlet> generateSyntheticWorkload() {
         List<Cloudlet> cloudlets = new ArrayList<>();
         Random random = new Random(42);
 
         for (int i = 0; i < request.getNumCloudlets(); i++) {
-            // 80% short tasks, 20% long tasks
+
             long length;
             if (random.nextDouble() < 0.8) {
-                // Short task
+
                 length = SimulationConstants.MIN_CLOUDLET_LENGTH + 
                         random.nextInt(5000);
             } else {
-                // Long task
+
                 length = 10000 + random.nextInt(20000);
             }
             
