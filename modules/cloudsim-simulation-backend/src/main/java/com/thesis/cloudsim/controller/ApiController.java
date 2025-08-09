@@ -2,9 +2,11 @@ package com.thesis.cloudsim.controller;
 
 import com.thesis.cloudsim.dto.SimulationRequest;
 import com.thesis.cloudsim.dto.IterationResults;
+import com.thesis.cloudsim.dto.ComparisonResults;
 import com.thesis.cloudsim.metrics.SimulationResults;
 import com.thesis.cloudsim.simulation.EnhancedSimulationManager;
 import com.thesis.cloudsim.service.IterationService;
+import com.thesis.cloudsim.service.ComparisonService;
 import com.thesis.cloudsim.algorithm.ISchedulingAlgorithm;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -12,7 +14,6 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -27,7 +28,6 @@ import java.util.HashMap;
 
 @RestController
 @RequestMapping("/api")
-@CrossOrigin(origins = {"http://localhost:3000", "http://localhost:5173", "file://"})
 public class ApiController {
 
     private final ISchedulingAlgorithm epso;
@@ -36,6 +36,9 @@ public class ApiController {
     
     @Autowired
     private IterationService iterationService;
+    
+    @Autowired
+    private ComparisonService comparisonService;
 
     public ApiController(@Qualifier("epso") ISchedulingAlgorithm epso,
                         @Qualifier("eaco") ISchedulingAlgorithm eaco,
@@ -117,6 +120,58 @@ public class ApiController {
             return ResponseEntity.ok(results);
         } catch (Exception e) {
             return createErrorResponse(e, params.get("optimizationAlgorithm"), params.get("iterations"));
+        } finally {
+            cleanupTempFile(tempFile);
+        }
+    }
+    
+    /**
+     * Run comparison between EACO and EPSO with paired t-test statistical analysis
+     * This endpoint implements the methodology from the manuscript for statistical validation
+     */
+    @PostMapping("/compare")
+    public ResponseEntity<?> compareAlgorithms(@RequestBody SimulationRequest request) {
+        try {
+            System.out.println("[DEBUG] Starting algorithm comparison with paired t-test analysis");
+            
+            // Ensure we have enough iterations for statistical validity
+            if (request.getIterations() < 30) {
+                System.out.println("[DEBUG] Setting iterations to 30 for statistical significance");
+                request.setIterations(30);
+            }
+            
+            ComparisonResults results = comparisonService.runComparison(request);
+            
+            System.out.println("[DEBUG] Comparison completed. Winner: " + 
+                results.getTTestResults().getOverallWinner());
+            
+            return ResponseEntity.ok(results);
+        } catch (Exception e) {
+            return createErrorResponse(e, "COMPARISON", "paired-ttest");
+        }
+    }
+    
+    @PostMapping("/compare-with-file")
+    public ResponseEntity<?> compareAlgorithmsWithFile(
+            @RequestParam("file") MultipartFile file,
+            @RequestParam Map<String, String> params) {
+        Path tempFile = null;
+        try {
+            SimulationRequest request = mapParamsToRequest(params);
+            tempFile = saveUploadedFile(file);
+            request.setWorkloadPath(tempFile.toString());
+            
+            // Ensure we have enough iterations for statistical validity
+            if (request.getIterations() < 30) {
+                System.out.println("[DEBUG] Setting iterations to 30 for statistical significance");
+                request.setIterations(30);
+            }
+            
+            ComparisonResults results = comparisonService.runComparison(request);
+            
+            return ResponseEntity.ok(results);
+        } catch (Exception e) {
+            return createErrorResponse(e, "COMPARISON", "with-file");
         } finally {
             cleanupTempFile(tempFile);
         }

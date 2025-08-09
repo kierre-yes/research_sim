@@ -1,0 +1,3 @@
+@echo off
+echo Starting MATLAB Engine for Thesis Application...
+matlab -r "matlab.engine.shareEngine('thesisEngine'); disp('MATLAB Engine ready. Keep this window open.'); while true; pause(1); end" -nodesktop

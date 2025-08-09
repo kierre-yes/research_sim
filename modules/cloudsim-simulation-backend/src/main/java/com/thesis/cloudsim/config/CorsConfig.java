@@ -21,6 +21,4 @@ public class CorsConfig {
             }
         };
     }
-    
-    // TODO: Remove @CrossOrigin annotations from controllers after verifying this global config works
 }
