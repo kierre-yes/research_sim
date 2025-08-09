@@ -72,14 +72,18 @@ public class EnhancedSimulationManager {
             
             // Configure algorithm-specific parameters
             if ("EPSO".equalsIgnoreCase(request.getOptimizationAlgorithm())) {
-                // PSO parameters
-                params.setParameter(AlgorithmParameters.MAX_ITERATIONS, 100);
-                params.setParameter(AlgorithmParameters.POPULATION_SIZE, 30);
+                // PSO parameters - Enhanced configuration for better performance
+                params.setParameter(AlgorithmParameters.MAX_ITERATIONS, 150);  // More iterations for EPSO
+                params.setParameter(AlgorithmParameters.POPULATION_SIZE, 40);  // Larger swarm for better exploration
                 params.setParameter(AlgorithmParameters.INERTIA_WEIGHT, 0.9);
+                params.setParameter(AlgorithmParameters.INERTIA_WEIGHT_MAX, 0.9);
+                params.setParameter(AlgorithmParameters.INERTIA_WEIGHT_MIN, 0.4);
                 params.setParameter(AlgorithmParameters.COGNITIVE_COEFFICIENT, 2.0);
                 params.setParameter(AlgorithmParameters.SOCIAL_COEFFICIENT, 2.0);
                 params.setParameter(AlgorithmParameters.MAX_VELOCITY, 10.0);
                 params.setParameter(AlgorithmParameters.MIN_VELOCITY, -10.0);
+                params.setParameter(AlgorithmParameters.MAX_VELOCITY_INITIAL, 6.0);
+                params.setParameter(AlgorithmParameters.MAX_VELOCITY_FINAL, 1.0);
             } else {
                 // ACO parameters
                 params.setParameter(AlgorithmParameters.MAX_ITERATIONS, 100);
@@ -90,6 +94,8 @@ public class EnhancedSimulationManager {
                 params.setParameter(AlgorithmParameters.INITIAL_PHEROMONE, 0.1);
                 params.setParameter(AlgorithmParameters.MIN_PHEROMONE, 0.01);
                 params.setParameter(AlgorithmParameters.MAX_PHEROMONE, 1.0);
+                params.setParameter(AlgorithmParameters.EVAPORATION_MIN, 0.1);
+                params.setParameter(AlgorithmParameters.EVAPORATION_MAX, 0.9);
             }
             
             // Get algorithm type

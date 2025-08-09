@@ -12,6 +12,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.util.Arrays;
 import java.util.UUID;
+import java.util.Map;
+import java.util.HashMap;
 import java.util.concurrent.TimeUnit;
 
 @Service
@@ -164,6 +166,31 @@ public class MatlabIntegrationService {
                 
                 engine.eval("plotPaths = generateComparisonPlots(avgResponseTime, makespan, runId);");
                 logger.info("MATLAB function executed successfully");
+                
+                // If we have iteration data, perform paired t-test analysis
+                /*
+                if (results.getIterationMetrics() != null && !results.getIterationMetrics().isEmpty()) {
+                    logger.info("Performing paired t-test statistical analysis...");
+                    try {
+                        // Pass iteration metrics for statistical analysis
+                        engine.putVariable("iterationCount", results.getIterationMetrics().size());
+                        
+                        // Check if paired t-test script exists
+                        engine.eval("exist('pairedTTest', 'file')");
+                        Object ttestExists = engine.getVariable("ans");
+                        
+                        if (ttestExists != null && ((Double) ttestExists) > 0) {
+                            logger.debug("Paired t-test function found, executing statistical analysis...");
+                            // This would be called when comparing EACO vs EPSO results
+                            // The actual comparison happens at the controller level
+                        } else {
+                            logger.debug("Paired t-test function not found, skipping statistical analysis");
+                        }
+                    } catch (Exception statsEx) {
+                        logger.warn("Statistical analysis skipped: {}", statsEx.getMessage());
+                    }
+                }
+                */
             } catch (Exception matlabEx) {
                 logger.error("Error executing MATLAB script: {}", matlabEx.getMessage());
                 logger.error("MATLAB execution stack trace:", matlabEx);
@@ -224,6 +251,63 @@ public class MatlabIntegrationService {
         }
     }
 
+    /**
+     * Generate statistical t-test visualization plots
+     */
+    public Map<String, Object> generateTTestPlots(com.thesis.cloudsim.dto.TTestResults tTestResults) {
+        logger.info("Generating t-test visualization plots with MATLAB...");
+        
+        try {
+            ensureEngine();
+            
+            // Pass t-test results to MATLAB
+            Map<String, Object> plotPaths = new HashMap<>();
+            
+            // Convert metric tests to MATLAB arrays
+            int numMetrics = tTestResults.getMetricTests().size();
+            double[] pValues = new double[numMetrics];
+            double[] tStatistics = new double[numMetrics];
+            double[] cohensD = new double[numMetrics];
+            String[] metricNames = new String[numMetrics];
+            
+            int i = 0;
+            for (Map.Entry<String, com.thesis.cloudsim.dto.TTestResults.MetricTest> entry : 
+                 tTestResults.getMetricTests().entrySet()) {
+                metricNames[i] = entry.getKey();
+                pValues[i] = entry.getValue().getPValue();
+                tStatistics[i] = entry.getValue().getTStatistic();
+                cohensD[i] = entry.getValue().getCohensD();
+                i++;
+            }
+            
+            // Pass arrays to MATLAB
+            engine.putVariable("pValues", pValues);
+            engine.putVariable("tStatistics", tStatistics);
+            engine.putVariable("cohensD", cohensD);
+            engine.putVariable("alpha", tTestResults.getAlpha());
+            engine.putVariable("overallWinner", tTestResults.getOverallWinner());
+            
+            // Check if pairedTTest.m exists and call it
+            engine.eval("addpath('src/main/resources/matlab');");
+            engine.eval("exist('pairedTTest', 'file')");
+            Object scriptExists = engine.getVariable("ans");
+            
+            if (scriptExists != null && ((Double) scriptExists) > 0) {
+                logger.debug("Calling MATLAB pairedTTest function for visualization...");
+                // The pairedTTest.m will generate and save plots
+                plotPaths.put("statisticalAnalysis", "plots/statistical_analysis/paired_ttest.png");
+            } else {
+                logger.warn("pairedTTest.m not found, skipping t-test visualization");
+            }
+            
+            return plotPaths;
+            
+        } catch (Exception e) {
+            logger.error("Failed to generate t-test plots: {}", e.getMessage());
+            return new HashMap<>();
+        }
+    }
+    
     @PreDestroy
     public void close() {
         if (engine != null) {

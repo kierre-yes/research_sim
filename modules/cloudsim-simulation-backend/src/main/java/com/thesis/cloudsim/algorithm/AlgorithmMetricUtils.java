@@ -217,7 +217,7 @@ public final class AlgorithmMetricUtils {
                 max = cloudlets.stream().mapToDouble(Cloudlet::getCloudletLength).sum() * 100.0;
                 break;
             case "loadBalance":
-                max = 1.0;
+                max = 2.0;  
                 break;
             case "responseTime":
                 double totalLength = cloudlets.stream().mapToDouble(Cloudlet::getCloudletLength).sum();

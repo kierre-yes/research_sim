@@ -12,7 +12,6 @@ import java.nio.file.Paths;
 
 @RestController
 @RequestMapping("/api/plots")
-@CrossOrigin(origins = {"http://localhost:3000", "http://localhost:5173"})
 public class PlotController {
 
     @GetMapping("/{simulationId}/{filename}")
