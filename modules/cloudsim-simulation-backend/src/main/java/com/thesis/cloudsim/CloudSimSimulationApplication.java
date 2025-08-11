@@ -5,6 +5,7 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.event.EventListener;
+import org.springframework.scheduling.annotation.EnableAsync;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -22,6 +23,7 @@ import org.slf4j.LoggerFactory;
  */
 @SpringBootApplication
 @EnableConfigurationProperties
+@EnableAsync  // I enable async here so that plot generation can run in background threads without blocking simulation requests
 public class CloudSimSimulationApplication {
 
     private static final Logger logger = LoggerFactory.getLogger(CloudSimSimulationApplication.class);
@@ -33,6 +35,7 @@ public class CloudSimSimulationApplication {
     
     @EventListener(ApplicationReadyEvent.class)
     public void applicationReady() {
+        // I log these startup messages so that developers can quickly verify the server is running and know the exact endpoints
         logger.info("CloudSim Simulation Backend is ready!");
         logger.info("Server running at: http://localhost:8081");
         logger.info("API endpoints available at: http://localhost:8081/api/*");

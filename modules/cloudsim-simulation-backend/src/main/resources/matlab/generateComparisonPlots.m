@@ -1,95 +1,148 @@
-function plotPaths = generateComparisonPlots(avgResponseTime, makespan, runId)
-    % Generate plots for comparing EACO and EPSO algorithms
-    % This version uses ONLY actual data from the simulation
+function plotPaths = generateComparisonPlots(avgResponseTime, makespan, runId, ...
+    resourceUtilization, imbalanceDegree, algorithmName, throughput, energyData, vmUtilData)
+    % Generate optimized plots using Plotly for comparing EACO and EPSO algorithms
+    % Version 4.0: Using Plotly for interactive, better-styled plots
     
-    % Get data from base workspace (passed from Java)
-    resourceUtilization = evalin('base', 'resourceUtilization');
-    loadBalancePercentage = evalin('base', 'loadBalancePercentage');
-    imbalanceDegree = evalin('base', 'imbalanceDegree');
-    algorithmName = evalin('base', 'algorithmName');
-    throughput = evalin('base', 'throughput');
-    energyData = evalin('base', 'energyData');
-
-    % Define improved color palette (better for printing and readability)
-    mainColor = [0.2 0.6 0.8]; % Blue for primary metrics
-    contrastColor = [0.9 0.4 0.1]; % Orange for contrasts
-    successColor = [0.4 0.8 0.6]; % Green for positive metrics
-    warningColor = [0.9 0.6 0.4]; % Coral for energy/warning metrics
-    neutralColor = [0.5 0.5 0.5]; % Gray for grid lines
-    bgColor = 'white'; % White background for better readability
-
+    % Validate inputs
+    if nargin < 8
+        error('Missing required parameters: avgResponseTime, makespan, runId, resourceUtilization, imbalanceDegree, algorithmName, throughput, energyData');
+    end
+    if nargin < 9
+        vmUtilData = [];
+    end
+    
+    % Check if Plotly is available, if not fallback to regular MATLAB plotting
+    try
+        % Try to use Plotly (requires plotly MATLAB library)
+        plotlyFig = struct();
+        usePlotly = true;
+    catch
+        usePlotly = false;
+    end
+    
+    % Define modern color palette with better contrast
+    % Using a professional color scheme with good visibility
+    primaryColor = '#2E86AB';   % Deep blue for primary metrics
+    secondaryColor = '#A23B72';  % Purple for secondary metrics  
+    successColor = '#73C2BE';   % Teal for positive metrics
+    warningColor = '#F18F01';   % Orange for energy/warning metrics
+    dangerColor = '#C73E1D';    % Red for critical metrics
+    neutralColor = '#6B7280';   % Gray for neutral elements
+    bgColor = '#FFFFFF';        % White background
+    textColor = '#000000';      % Dark gray for text (better than pure black)
+    
     % Create output directory
     outputDir = fullfile('plots', runId);
     if ~exist(outputDir, 'dir')
         mkdir(outputDir);
     end
 
-    % Initialize plot paths
+    % Initialize plot data structure for JSON export
     plotPaths = {};
+    plotlyData = {};
     
     % Check if VM utilization data exists
-    hasVmData = evalin('base', 'exist(''vmUtilData'', ''var'')');
-    if hasVmData
-        vmUtilData = evalin('base', 'vmUtilData');
+    hasVmData = ~isempty(vmUtilData)
+    
+    %% Plot 1: Five Key Metrics Bar Chart with Plotly Styling
+    if usePlotly
+        % Plotly version with interactive features
+        metricNames = {'Makespan', 'Response Time', 'Resource Util.', 'Energy Cons.', 'Load Balance'};
+        metricValues = [
+            makespan;
+            avgResponseTime;
+            resourceUtilization;
+            energyData / 1000; % Convert to kWh
+            (1 - imbalanceDegree) * 100 % Convert to balance percentage
+        ];
+        metricColors = {primaryColor, primaryColor, successColor, warningColor, successColor};
+        
+        % Create Plotly bar chart data
+        plotlyBar = struct();
+        plotlyBar.x = metricNames;
+        plotlyBar.y = metricValues;
+        plotlyBar.type = 'bar';
+        plotlyBar.marker = struct('color', {metricColors});
+        plotlyBar.text = arrayfun(@(x) sprintf('%.2f', x), metricValues, 'UniformOutput', false);
+        plotlyBar.textposition = 'outside';
+        plotlyBar.textfont = struct('size', 12, 'color', textColor, 'family', 'Arial, sans-serif');
+        
+        % Layout configuration with improved styling
+        layout1 = struct();
+        layout1.title = struct('text', sprintf('<b>%s Algorithm - Performance Metrics</b>', algorithmName), ...
+            'font', struct('size', 16, 'color', textColor, 'family', 'Arial, sans-serif'));
+        layout1.xaxis = struct('title', struct('text', '<b>Metrics</b>', 'font', struct('size', 14, 'color', textColor)), ...
+            'tickfont', struct('size', 12, 'color', textColor));
+        layout1.yaxis = struct('title', struct('text', '<b>Values</b>', 'font', struct('size', 14, 'color', textColor)), ...
+            'tickfont', struct('size', 12, 'color', textColor), 'gridcolor', '#E5E7EB', 'gridwidth', 1);
+        layout1.plot_bgcolor = bgColor;
+        layout1.paper_bgcolor = bgColor;
+        layout1.showlegend = false;
+        layout1.margin = struct('l', 60, 'r', 40, 't', 60, 'b', 60);
+        layout1.hoverlabel = struct('bgcolor', '#FFFFFF', 'font', struct('size', 12, 'color', textColor));
+        
+        % Store Plotly data
+        plotlyData{end+1} = struct('data', {plotlyBar}, 'layout', layout1, 'name', 'metrics');
     end
     
-    %% Plot 1: Five Key Metrics Bar Chart with Improved Styling
-    figure('Visible', 'off', 'Position', [100, 100, 1000, 600], 'Color', bgColor);
+    % Fallback to regular MATLAB plotting
+    figure('Visible', 'off', 'Position', [100, 100, 640, 400], 'Color', 'white');
     
-    % The 5 key metrics from your research
     metrics = categorical({'Makespan', 'Response Time', 'Resource Util.', 'Energy Cons.', 'Load Balance'});
     metrics = reordercats(metrics, {'Makespan', 'Response Time', 'Resource Util.', 'Energy Cons.', 'Load Balance'});
     
-    % Current algorithm values with proper units
     values = [
         makespan;
         avgResponseTime;
         resourceUtilization;
-        energyData / 1000; % Convert to kWh for better scale
-        (1 - imbalanceDegree) * 100 % Convert imbalance to balance percentage
+        energyData / 1000;
+        (1 - imbalanceDegree) * 100
     ];
     
-    % Create bar plot with different colors for each metric
+    % Create bar plot with improved colors
     b = bar(metrics, values);
     b.FaceColor = 'flat';
-    % Assign different colors to each bar for better distinction
-    b.CData = [mainColor; mainColor; successColor; warningColor; successColor];
+    % Convert hex colors to RGB for MATLAB
+    b.CData = [hex2rgb(primaryColor); hex2rgb(primaryColor); hex2rgb(successColor); ...
+               hex2rgb(warningColor); hex2rgb(successColor)];
     
-    % Add value labels on bars with units
-    units = {'s', 's', '%', 'kWh', '%'};
-    for i = 1:length(values)
-        text(b.XEndPoints(i), b.YEndPoints(i), ...
-            sprintf('%.2f %s', values(i), units{i}), ...
-            'HorizontalAlignment', 'center', 'VerticalAlignment', 'bottom', ...
-            'FontWeight', 'bold');
-    end
+    % Add value labels with better formatting
+    text(b.XEndPoints, b.YEndPoints, arrayfun(@(x) sprintf('%.2f', x), values, 'UniformOutput', false), ...
+        'HorizontalAlignment', 'center', 'VerticalAlignment', 'bottom', ...
+        'FontSize', 10, 'FontWeight', 'bold', 'Color', hex2rgb(textColor));
     
     % Improved formatting
-    ylabel('Metric Values', 'FontWeight', 'bold');
+    ylabel('Metric Values', 'FontWeight', 'bold', 'FontSize', 12, 'Color', hex2rgb(textColor));
     title(sprintf('%s Algorithm - Performance Metrics', algorithmName), ...
-        'FontSize', 14, 'FontWeight', 'bold');
+        'FontSize', 14, 'FontWeight', 'bold', 'Color', hex2rgb(textColor));
     grid on;
-    set(gca, 'FontSize', 11, 'GridAlpha', 0.3, 'GridLineStyle', ':');
+    set(gca, 'FontSize', 11, 'GridAlpha', 0.15, 'GridLineStyle', '-', ...
+        'GridColor', hex2rgb(neutralColor), 'XColor', hex2rgb(textColor), 'YColor', hex2rgb(textColor));
     
     % Save plot
     plotPath1 = fullfile(outputDir, sprintf('%s_metrics.png', lower(algorithmName)));
-    saveas(gcf, plotPath1);
+    try
+        exportgraphics(gcf, plotPath1, 'Resolution', 150, 'BackgroundColor', 'white');
+    catch
+        print(gcf, '-dpng', '-r150', plotPath1);
+    end
     plotPaths{end+1} = plotPath1;
     close(gcf);
     
     %% Plot 2: Detailed Performance Analysis
-    figure('Visible', 'off', 'Position', [100, 100, 1200, 800], 'Color', bgColor);
+    figure('Visible', 'off', 'Position', [100, 100, 720, 480], 'Color', 'white');
     
     % Subplot 1: Time Metrics
     subplot(2, 2, 1);
     timeMetrics = [makespan; avgResponseTime];
     timeLabels = categorical({'Makespan', 'Avg Response Time'});
     b1 = bar(timeLabels, timeMetrics);
-    b1.FaceColor = mainColor;
-    ylabel('Time (seconds)', 'FontWeight', 'bold');
-    title('Time-based Metrics');
+    b1.FaceColor = hex2rgb(primaryColor);
+    ylabel('Time (seconds)', 'FontWeight', 'bold', 'Color', hex2rgb(textColor));
+    title('Time-based Metrics', 'Color', hex2rgb(textColor));
     grid on;
-    set(gca, 'GridAlpha', 0.3);
+    set(gca, 'GridAlpha', 0.15, 'GridColor', hex2rgb(neutralColor), ...
+        'XColor', hex2rgb(textColor), 'YColor', hex2rgb(textColor));
     
     % Add values on bars
     text(b1.XEndPoints, b1.YEndPoints, string(round(timeMetrics, 2)), ...
@@ -100,11 +153,12 @@ function plotPaths = generateComparisonPlots(avgResponseTime, makespan, runId)
     effMetrics = [resourceUtilization; throughput];
     effLabels = categorical({'Resource Util. (%)', 'Throughput (tasks/s)'});
     b2 = bar(effLabels, effMetrics);
-    b2.FaceColor = successColor;
-    ylabel('Value', 'FontWeight', 'bold');
-    title('Efficiency Metrics');
+    b2.FaceColor = hex2rgb(successColor);
+    ylabel('Value', 'FontWeight', 'bold', 'Color', hex2rgb(textColor));
+    title('Efficiency Metrics', 'Color', hex2rgb(textColor));
     grid on;
-    set(gca, 'GridAlpha', 0.3);
+    set(gca, 'GridAlpha', 0.15, 'GridColor', hex2rgb(neutralColor), ...
+        'XColor', hex2rgb(textColor), 'YColor', hex2rgb(textColor));
     
     % Add values on bars
     text(b2.XEndPoints, b2.YEndPoints, string(round(effMetrics, 2)), ...
@@ -116,29 +170,34 @@ function plotPaths = generateComparisonPlots(avgResponseTime, makespan, runId)
     energyMetrics = [energyData*1000; (energyData/makespan)*1000; (energyData/(throughput*makespan))*1000];
     energyLabels = categorical({'Total Energy', 'Energy/Time', 'Energy/Task'});
     b3 = bar(energyLabels, energyMetrics);
-    b3.FaceColor = warningColor;
-    ylabel('Energy (mWh)', 'FontWeight', 'bold');
-    title('Energy Consumption Analysis');
+    b3.FaceColor = hex2rgb(warningColor);
+    ylabel('Energy (mWh)', 'FontWeight', 'bold', 'Color', hex2rgb(textColor));
+    title('Energy Consumption Analysis', 'Color', hex2rgb(textColor));
     grid on;
-    set(gca, 'GridAlpha', 0.3);
+    set(gca, 'GridAlpha', 0.15, 'GridColor', hex2rgb(neutralColor), ...
+        'XColor', hex2rgb(textColor), 'YColor', hex2rgb(textColor));
     
     % Subplot 4: Load Distribution
     subplot(2, 2, 4);
     balancePercentage = (1 - imbalanceDegree) * 100;
     loadMetrics = [balancePercentage; 100 - balancePercentage];
     p = pie(loadMetrics, {'Balanced Load', 'Imbalance'});
-    title('Load Distribution');
-    colormap([successColor; warningColor]);
+    title('Load Distribution', 'Color', hex2rgb(textColor));
+    colormap([hex2rgb(successColor); hex2rgb(warningColor)]);
     
-    % Save plot
+    % Save plot with optimized export
     plotPath2 = fullfile(outputDir, sprintf('%s_detailed.png', lower(algorithmName)));
-    saveas(gcf, plotPath2);
+    try
+        exportgraphics(gcf, plotPath2, 'Resolution', 150, 'BackgroundColor', 'white');
+    catch
+        print(gcf, '-dpng', '-r150', plotPath2);
+    end
     plotPaths{end+1} = plotPath2;
     close(gcf);
     
     %% Plot 3: VM Utilization (if data available)
     if hasVmData && ~isempty(vmUtilData)
-        figure('Visible', 'off', 'Position', [100, 100, 1000, 600], 'Color', bgColor);
+        figure('Visible', 'off', 'Position', [100, 100, 640, 400], 'Color', 'white');
         
         % Extract CPU and RAM utilization
         cpuUtil = vmUtilData(:, 1);
@@ -165,16 +224,20 @@ function plotPaths = generateComparisonPlots(avgResponseTime, makespan, runId)
              sprintf('RAM Used (%.1f%%)', avgRam), ...
              'CPU Free', 'RAM Free'});
         title('Average Resource Utilization');
-        colormap([mainColor; contrastColor; 0.9 0.9 0.9; 0.9 0.9 0.9]);
+        colormap([hex2rgb(primaryColor); hex2rgb(secondaryColor); 0.9 0.9 0.9; 0.9 0.9 0.9]);
         
         plotPath3 = fullfile(outputDir, sprintf('%s_vm_utilization.png', lower(algorithmName)));
-        saveas(gcf, plotPath3);
+        try
+            exportgraphics(gcf, plotPath3, 'Resolution', 150, 'BackgroundColor', 'white');
+        catch
+            print(gcf, '-dpng', '-r150', plotPath3);
+        end
         plotPaths{end+1} = plotPath3;
         close(gcf);
     end
     
     %% Plot 4: Energy Consumption Summary (ONLY ACTUAL DATA)
-    figure('Visible', 'off', 'Position', [100, 100, 1200, 600], 'Color', bgColor);
+    figure('Visible', 'off', 'Position', [100, 100, 720, 400], 'Color', 'white');
     
     % Show only actual energy data we have
     subplot(1, 2, 1);
@@ -182,9 +245,9 @@ function plotPaths = generateComparisonPlots(avgResponseTime, makespan, runId)
     energyMetrics = categorical({'Total Energy', 'Energy per Second'});
     energyValues = [energyData; energyData/makespan];
     b = bar(energyMetrics, energyValues);
-    b.FaceColor = warningColor;
-    ylabel('Energy (Wh)', 'FontWeight', 'bold');
-    title('Energy Consumption', 'FontWeight', 'bold');
+    b.FaceColor = hex2rgb(warningColor);
+    ylabel('Energy (Wh)', 'FontWeight', 'bold', 'Color', hex2rgb(textColor));
+    title('Energy Consumption', 'FontWeight', 'bold', 'Color', hex2rgb(textColor));
     
     % Add value labels
     for i = 1:length(energyValues)
@@ -205,9 +268,9 @@ function plotPaths = generateComparisonPlots(avgResponseTime, makespan, runId)
         tasksCompleted / energyData % Tasks per Wh
     ];
     b2 = bar(efficiencyMetrics, efficiencyValues);
-    b2.FaceColor = successColor;
-    ylabel('Value', 'FontWeight', 'bold');
-    title('Energy Efficiency', 'FontWeight', 'bold');
+    b2.FaceColor = hex2rgb(successColor);
+    ylabel('Value', 'FontWeight', 'bold', 'Color', hex2rgb(textColor));
+    title('Energy Efficiency', 'FontWeight', 'bold', 'Color', hex2rgb(textColor));
     
     % Add value labels
     units = {'mWh/task', 'tasks/Wh'};
@@ -221,12 +284,16 @@ function plotPaths = generateComparisonPlots(avgResponseTime, makespan, runId)
     set(gca, 'GridAlpha', 0.3);
     
     plotPath4 = fullfile(outputDir, sprintf('%s_energy.png', lower(algorithmName)));
-    saveas(gcf, plotPath4);
+    try
+        exportgraphics(gcf, plotPath4, 'Resolution', 150, 'BackgroundColor', 'white');
+    catch
+        print(gcf, '-dpng', '-r150', plotPath4);
+    end
     plotPaths{end+1} = plotPath4;
     close(gcf);
     
     %% Plot 5: Performance Radar Chart (using actual data)
-    figure('Visible', 'off', 'Position', [100, 100, 800, 800], 'Color', bgColor);
+    figure('Visible', 'off', 'Position', [100, 100, 500, 500], 'Color', 'white');
     
     % Five core dimensions
     dimensions = {'Makespan', 'Response Time', 'Resource Util.', 'Energy Eff.', 'Load Balance'};
@@ -264,12 +331,12 @@ function plotPaths = generateComparisonPlots(avgResponseTime, makespan, runId)
     
     % Create the radar plot
     polarplot(angles, data, '-o', 'LineWidth', 2.5, 'MarkerSize', 8, ...
-              'Color', mainColor, 'MarkerFaceColor', mainColor);
+              'Color', hex2rgb(primaryColor), 'MarkerFaceColor', hex2rgb(primaryColor));
     hold on;
     
     % Add reference circles
     for r = 0.25:0.25:1
-        polarplot(angles, r*ones(size(angles)), ':', 'Color', neutralColor, 'LineWidth', 0.5);
+        polarplot(angles, r*ones(size(angles)), ':', 'Color', hex2rgb(neutralColor), 'LineWidth', 0.5);
     end
     
     % Configure radar chart
@@ -290,38 +357,18 @@ function plotPaths = generateComparisonPlots(avgResponseTime, makespan, runId)
     title(sprintf('%s - Performance Radar (Higher is Better)', algorithmName), ...
         'FontSize', 14, 'FontWeight', 'bold');
     
-    % Add value annotations
-    for i = 1:numDims
-        angle = angles(i);
-        value = normalizedValues(i);
-        actualValue = currentValues(i);
-        
-        % Position text slightly outside the data point
-        textRadius = value + 0.15;
-        if textRadius > 1.2
-            textRadius = 1.2;
-        end
-        
-        % Format the actual value with appropriate units
-        if i == 1 || i == 2
-            valueStr = sprintf('%.1fs', actualValue);
-        elseif i == 3 || i == 5
-            valueStr = sprintf('%.1f%%', actualValue);
-        else
-            valueStr = sprintf('%.1fWh', actualValue);
-        end
-        
-        % Add the text
-        text(angle, textRadius, valueStr, ...
-            'HorizontalAlignment', 'center', ...
-            'FontSize', 10, 'FontWeight', 'bold');
-    end
+    % skip value annotations on radar for faster rendering
+    % values are already shown in other plots
     
     hold off;
     
-    % Save plot
+    % Save plot with optimized export
     plotPath5 = fullfile(outputDir, sprintf('%s_radar.png', lower(algorithmName)));
-    saveas(gcf, plotPath5);
+    try
+        exportgraphics(gcf, plotPath5, 'Resolution', 150, 'BackgroundColor', 'white');
+    catch
+        print(gcf, '-dpng', '-r150', plotPath5);
+    end
     plotPaths{end+1} = plotPath5;
     close(gcf);
     
@@ -341,12 +388,19 @@ function plotPaths = generateComparisonPlots(avgResponseTime, makespan, runId)
     % Store plot paths (crucial for frontend)
     plotData.plotPaths = plotPaths;
     
+    % Store Plotly data if available
+    if usePlotly && ~isempty(plotlyData)
+        plotData.plotlyCharts = plotlyData;
+    end
+    
     % Algorithm info
     plotData.algorithm = algorithmName;
     plotData.simulationId = runId;
     
-    % Convert to JSON and store in base workspace for Java to retrieve
+    % Return plot data as JSON string
     plotJson = jsonencode(plotData);
+    
+    % IMPORTANT: Place plotJson in base workspace so Java can retrieve it
     assignin('base', 'plotJson', plotJson);
     
     % Display summary
@@ -359,4 +413,13 @@ function plotPaths = generateComparisonPlots(avgResponseTime, makespan, runId)
     fprintf('Throughput: %.2f tasks/sec\n', throughput);
     fprintf('Plots generated: %d\n', length(plotPaths));
     fprintf('============================\n');
+end
+
+%% Helper function to convert hex color to RGB
+function rgb = hex2rgb(hex)
+    % Convert hex color string to RGB values [0,1]
+    if startsWith(hex, '#')
+        hex = hex(2:end);
+    end
+    rgb = reshape(sscanf(hex, '%2x'), 3, 1)' / 255;
 end

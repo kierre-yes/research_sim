@@ -5,28 +5,45 @@ import com.thesis.cloudsim.dto.ProcessedResults;
 import com.thesis.cloudsim.dto.SimulationRequest;
 import com.thesis.cloudsim.matlab.MatlabIntegrationService;
 import com.thesis.cloudsim.metrics.SimulationResults;
+import com.thesis.cloudsim.service.AsyncPlotGenerationService;
+import com.thesis.cloudsim.service.AsyncPlotGenerationService.PlotGenerationStatus;
 import com.thesis.cloudsim.simulation.EnhancedSimulationManager;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.HttpStatus;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
+import java.util.HashMap;
+import java.util.Map;
 
 
+/**
+ * REST Controller for simulation endpoints
+ * 
+ * I implement the main API endpoints so that the frontend can trigger simulations
+ * and retrieve results in different formats (raw, with plots, or async)
+ */
 @RestController
 @RequestMapping("/api/simulate")
 public class SimulationController {
 
     private static final Logger logger = LoggerFactory.getLogger(SimulationController.class);
     
+    // I inject algorithm beans so that they can be reused across requests
     private final ISchedulingAlgorithm epso;
     private final ISchedulingAlgorithm eaco;
     
+    // I mark MATLAB service as optional so that the app works without MATLAB installed
     @Autowired(required = false)
     private MatlabIntegrationService matlabService;
+    
+    // I mark async plot service as optional for environments without plot generation
+    @Autowired(required = false)
+    private AsyncPlotGenerationService asyncPlotService;
 
     public SimulationController(@Qualifier("epso") ISchedulingAlgorithm epso,
                                 @Qualifier("eaco") ISchedulingAlgorithm eaco) {
@@ -35,11 +52,17 @@ public class SimulationController {
         logger.info("SimulationController initialized with EPSO and EACO algorithms");
     }
 
+    /**
+     * Run simulation and return raw results without plot generation
+     * 
+     * I provide this endpoint so that clients can get results quickly without
+     * waiting for plot generation, which can be time-consuming
+     */
     @PostMapping("/raw")
     public SimulationResults runSimulationRaw(@RequestBody SimulationRequest request) throws IOException {
         logger.debug("Received simulation request for algorithm: {}", request.getOptimizationAlgorithm());
         
-
+        // I select the algorithm based on the request parameter
         ISchedulingAlgorithm algorithm;
         if ("EPSO".equalsIgnoreCase(request.getOptimizationAlgorithm())) {
             algorithm = epso;
@@ -49,7 +72,7 @@ public class SimulationController {
             logger.debug("Using EACO algorithm");
         }
         
-
+        // I track execution time so that performance can be monitored
         long startTime = System.currentTimeMillis();
         EnhancedSimulationManager manager = new EnhancedSimulationManager(algorithm, request);
         SimulationResults results = manager.run();
@@ -61,11 +84,14 @@ public class SimulationController {
     }
 
     /**
-
+     * Run simulation with synchronous plot generation via MATLAB
+     * 
+     * I provide this endpoint so that clients can get results with plots
+     * in a single request, though it takes longer than the raw endpoint
      */
     @PostMapping("/with-plots")
     public ResponseEntity<Object> runSimulationWithPlots(@RequestBody SimulationRequest request) throws IOException {
-        // Verify MATLAB service availability
+        // I check MATLAB availability first so that we fail fast if plots can't be generated
         if (matlabService == null) {
             logger.warn("MATLAB service not available - plots disabled");
             return ResponseEntity
@@ -77,10 +103,11 @@ public class SimulationController {
         }
         
 
+        // I use ternary operator for concise algorithm selection
         ISchedulingAlgorithm algorithm = "EPSO".equalsIgnoreCase(request.getOptimizationAlgorithm()) ? epso : eaco;
         EnhancedSimulationManager manager = new EnhancedSimulationManager(algorithm, request);
         
-
+        // I check if MATLAB is still warming up so that clients can retry later
         if (!matlabService.isReady()) {
             logger.info("MATLAB engine warming up...");
             return ResponseEntity
@@ -92,12 +119,143 @@ public class SimulationController {
         try {
             SimulationResults raw = manager.run();
             String algorithmName = request.getOptimizationAlgorithm() != null ? request.getOptimizationAlgorithm() : "CloudSim";
+            // I process results through MATLAB to generate visualization plots
             ProcessedResults out = matlabService.processResults(raw, algorithmName);
             return ResponseEntity.ok(out);
         } catch (Exception e) {
             logger.error("Error during MATLAB processing", e);
-
+            // I rethrow so that Spring's exception handler can format the error response
             throw e;
         }
+    }
+    
+    /**
+     * Run simulation and generate plots asynchronously
+     * 
+     * I provide this endpoint so that clients can get simulation results immediately
+     * while plots are generated in the background, improving perceived performance
+     */
+    @PostMapping("/async")
+    public ResponseEntity<Map<String, Object>> runSimulationAsync(@RequestBody SimulationRequest request) throws IOException {
+        logger.info("Received async simulation request for algorithm: {}", request.getOptimizationAlgorithm());
+        
+        // I verify service availability so that we don't promise async plots we can't deliver
+        if (asyncPlotService == null) {
+            logger.warn("Async plot service not available");
+            return ResponseEntity
+                    .status(HttpStatus.SERVICE_UNAVAILABLE)
+                    .body(Map.of(
+                        "error", "Async plot generation is not available",
+                        "message", "Please use /with-plots for synchronous plot generation"
+                    ));
+        }
+        
+        // I run the simulation synchronously first to get results
+        ISchedulingAlgorithm algorithm = "EPSO".equalsIgnoreCase(request.getOptimizationAlgorithm()) ? epso : eaco;
+        EnhancedSimulationManager manager = new EnhancedSimulationManager(algorithm, request);
+        
+        long startTime = System.currentTimeMillis();
+        SimulationResults results = manager.run();
+        long executionTime = System.currentTimeMillis() - startTime;
+        
+        logger.info("Simulation completed in {} ms, submitting for async plot generation", executionTime);
+        
+        // I submit the results for background plot generation so that the client doesn't wait
+        String algorithmName = request.getOptimizationAlgorithm() != null ? request.getOptimizationAlgorithm() : "CloudSim";
+        String plotTrackingId = asyncPlotService.submitForPlotGeneration(results, algorithmName);
+        
+        // I return results immediately with a tracking ID so that clients can poll for plot status
+        Map<String, Object> response = new HashMap<>();
+        response.put("simulationResults", results);
+        response.put("plotTrackingId", plotTrackingId);
+        response.put("plotStatus", "PENDING");
+        response.put("message", "Simulation completed. Plots are being generated in background.");
+        response.put("executionTimeMs", executionTime);
+        
+        return ResponseEntity.ok(response);
+    }
+    
+    /**
+     * Check plot generation status
+     * 
+     * I provide this endpoint so that clients can poll for plot generation progress
+     * without blocking their UI while waiting for plots to complete
+     */
+    @GetMapping("/plot-status/{trackingId}")
+    public ResponseEntity<Map<String, Object>> getPlotStatus(@PathVariable String trackingId) {
+        if (asyncPlotService == null) {
+            return ResponseEntity
+                    .status(HttpStatus.SERVICE_UNAVAILABLE)
+                    .body(Map.of("error", "Async plot service not available"));
+        }
+        
+        PlotGenerationStatus status = asyncPlotService.getStatus(trackingId);
+        
+        // I check if the tracking ID exists so that we can return appropriate error
+        if (status == null) {
+            return ResponseEntity
+                    .status(HttpStatus.NOT_FOUND)
+                    .body(Map.of(
+                        "error", "Invalid tracking ID",
+                        "trackingId", trackingId
+                    ));
+        }
+        
+        // I build a comprehensive status response so that clients know exactly what's happening
+        Map<String, Object> response = new HashMap<>();
+        response.put("trackingId", trackingId);
+        response.put("status", status.getStatus().toString());
+        response.put("progress", status.getProgress());
+        response.put("message", status.getMessage());
+        response.put("elapsedTimeMs", status.getElapsedTime());
+        
+        // I include plot data only when completed so that response size stays small during polling
+        if (status.getStatus() == AsyncPlotGenerationService.PlotStatus.COMPLETED) {
+            ProcessedResults results = asyncPlotService.getResults(trackingId);
+            if (results != null) {
+                response.put("plotData", results.getPlotData());
+                response.put("plotPaths", results.getPlotData().get("plotPaths"));
+            }
+        }
+        
+        return ResponseEntity.ok(response);
+    }
+    
+    /**
+     * Get completed plot results
+     * 
+     * I provide this endpoint so that clients can retrieve the full plot data
+     * once generation is complete, separate from the status polling
+     */
+    @GetMapping("/plot-results/{trackingId}")
+    public ResponseEntity<Object> getPlotResults(@PathVariable String trackingId) {
+        if (asyncPlotService == null) {
+            return ResponseEntity
+                    .status(HttpStatus.SERVICE_UNAVAILABLE)
+                    .body(Map.of("error", "Async plot service not available"));
+        }
+        
+        // I check if plots are ready so that we can return appropriate status
+        if (!asyncPlotService.isPlotsReady(trackingId)) {
+            PlotGenerationStatus status = asyncPlotService.getStatus(trackingId);
+            if (status == null) {
+                return ResponseEntity
+                        .status(HttpStatus.NOT_FOUND)
+                        .body(Map.of("error", "Invalid tracking ID"));
+            }
+            
+            // I return 202 Accepted so that clients know to keep waiting
+            return ResponseEntity
+                    .status(HttpStatus.ACCEPTED)
+                    .body(Map.of(
+                        "status", status.getStatus().toString(),
+                        "message", "Plots not ready yet",
+                        "progress", status.getProgress()
+                    ));
+        }
+        
+        // I return the complete results once plots are ready
+        ProcessedResults results = asyncPlotService.getResults(trackingId);
+        return ResponseEntity.ok(results);
     }
 }

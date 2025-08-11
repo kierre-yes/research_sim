@@ -258,6 +258,19 @@ public class ComparisonService {
         test.setCohensD(cohensD);
         test.setSignificant(pValue < 0.05);
         
+        // Debug logging to trace potential serialization issues
+        if (logger.isDebugEnabled()) {
+            logger.debug("TTEST {} -> n={}, meanDiff={}, sd={}, se={}, t={}, df={}, p={}",
+                metricName, n,
+                String.format("%.6f", meanDiff),
+                String.format("%.6f", stdDev),
+                String.format("%.6f", stdError),
+                String.format("%.6f", tStatistic),
+                df,
+                String.format("%.6f", pValue)
+            );
+        }
+        
         // i fixed this supposed to find the better algo
         boolean isLowerBetter = isLowerBetterMetric(metricName);
         

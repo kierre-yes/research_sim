@@ -1,0 +1,119 @@
+function plotData = generateComparisonPlots_optimized(avgResponseTime, makespan, runId, ...
+    resourceUtilization, imbalanceDegree, algorithmName, throughput, energyData, vmUtilData)
+    % Optimized version that returns plot data without saving to disk
+    % This reduces I/O overhead significantly
+    
+    % Validate inputs
+    if nargin < 8
+        error('Missing required parameters');
+    end
+    if nargin < 9
+        vmUtilData = [];
+    end
+    
+    % Initialize plot data structure
+    plotData = struct();
+    plotData.metrics = struct(...
+        'makespan', makespan, ...
+        'avgResponseTime', avgResponseTime, ...
+        'resourceUtilization', resourceUtilization, ...
+        'energyConsumption', energyData, ...
+        'loadBalance', (1 - imbalanceDegree) * 100, ...
+        'throughput', throughput ...
+    );
+    
+    % Store raw data for frontend to create plots client-side
+    plotData.chartData = struct();
+    
+    %% Chart 1: Key Metrics Data
+    plotData.chartData.keyMetrics = struct(...
+        'labels', {{'Makespan', 'Response Time', 'Resource Util.', 'Energy Cons.', 'Load Balance'}}, ...
+        'values', [makespan, avgResponseTime, resourceUtilization, energyData/1000, (1-imbalanceDegree)*100], ...
+        'units', {{'s', 's', '%', 'kWh', '%'}}, ...
+        'colors', {{'#2E86AB', '#2E86AB', '#73C2BE', '#F18F01', '#73C2BE'}} ...
+    );
+    
+    %% Chart 2: Time Metrics
+    plotData.chartData.timeMetrics = struct(...
+        'labels', {{'Makespan', 'Avg Response Time'}}, ...
+        'values', [makespan, avgResponseTime] ...
+    );
+    
+    %% Chart 3: Efficiency Metrics
+    plotData.chartData.efficiencyMetrics = struct(...
+        'labels', {{'Resource Util. (%)', 'Throughput (tasks/s)'}}, ...
+        'values', [resourceUtilization, throughput] ...
+    );
+    
+    %% Chart 4: Energy Analysis
+    plotData.chartData.energyMetrics = struct(...
+        'labels', {{'Total Energy', 'Energy/Time', 'Energy/Task'}}, ...
+        'values', [energyData*1000, (energyData/makespan)*1000, (energyData/(throughput*makespan))*1000], ...
+        'unit', 'mWh' ...
+    );
+    
+    %% Chart 5: Load Distribution
+    balancePercentage = (1 - imbalanceDegree) * 100;
+    plotData.chartData.loadDistribution = struct(...
+        'balanced', balancePercentage, ...
+        'imbalanced', 100 - balancePercentage ...
+    );
+    
+    %% Chart 6: VM Utilization (if available)
+    if ~isempty(vmUtilData)
+        cpuUtil = vmUtilData(:, 1);
+        ramUtil = vmUtilData(:, 2);
+        plotData.chartData.vmUtilization = struct(...
+            'vmIds', 1:length(cpuUtil), ...
+            'cpuUtilization', cpuUtil', ...
+            'ramUtilization', ramUtil', ...
+            'avgCpu', mean(cpuUtil), ...
+            'avgRam', mean(ramUtil) ...
+        );
+    end
+    
+    %% Chart 7: Performance Radar
+    plotData.chartData.performanceRadar = struct(...
+        'dimensions', {{'Makespan', 'Response Time', 'Resource Util.', 'Energy Eff.', 'Load Balance'}}, ...
+        'actualValues', [makespan, avgResponseTime, resourceUtilization, energyData, (1-imbalanceDegree)*100], ...
+        'normalizedValues', normalizeRadarValues(makespan, avgResponseTime, resourceUtilization, energyData, imbalanceDegree) ...
+    );
+    
+    % Algorithm info
+    plotData.algorithm = algorithmName;
+    plotData.simulationId = runId;
+    plotData.timestamp = datestr(now, 'yyyy-mm-dd HH:MM:SS');
+    
+    % Convert to JSON for Java
+    plotJson = jsonencode(plotData);
+    assignin('base', 'plotJson', plotJson);
+    
+    % Display summary
+    fprintf('\n=== %s Algorithm Results (Optimized) ===\n', algorithmName);
+    fprintf('Makespan: %.2f seconds\n', makespan);
+    fprintf('Avg Response Time: %.2f seconds\n', avgResponseTime);
+    fprintf('Resource Utilization: %.2f%%\n', resourceUtilization);
+    fprintf('Energy Consumption: %.2f Wh\n', energyData);
+    fprintf('Load Balance: %.2f%%\n', (1 - imbalanceDegree) * 100);
+    fprintf('Throughput: %.2f tasks/sec\n', throughput);
+    fprintf('Data prepared for frontend rendering\n');
+    fprintf('============================\n');
+end
+
+function normalizedValues = normalizeRadarValues(makespan, avgResponseTime, resourceUtilization, energyData, imbalanceDegree)
+    % Normalize values for radar chart (0-1 scale)
+    normalizedValues = zeros(5, 1);
+    
+    % For makespan and response time (lower is better)
+    normalizedValues(1) = max(0, min(1, 1 - (makespan - 10) / 190));
+    normalizedValues(2) = max(0, min(1, 1 - (avgResponseTime - 5) / 145));
+    
+    % For resource utilization (higher is better)
+    normalizedValues(3) = resourceUtilization / 100;
+    
+    % For energy (lower is better)
+    normalizedValues(4) = max(0, min(1, 1 - (energyData - 50) / 450));
+    
+    % For load balance (higher is better)
+    normalizedValues(5) = (1 - imbalanceDegree);
+end

@@ -144,7 +144,17 @@ public class EnhancedSimulationManager {
         
         // Submit resources to broker
         broker.submitGuestList(vmList);
-        broker.submitCloudletList(cloudlets);
+        
+        // Check if we should use arrival times for staged submission
+        if (request.isUseArrivalTimes() && request.getArrivalTimes() != null && !request.getArrivalTimes().isEmpty()) {
+            // Staged submission based on arrival times
+            System.out.println("[INFO] Using staged submission with arrival times");
+            submitCloudletsWithTiming(broker, cloudlets, request.getArrivalTimes());
+        } else {
+            // Batch submission (default behavior)
+            System.out.println("[INFO] Using batch submission (all cloudlets at t=0)");
+            broker.submitCloudletList(cloudlets);
+        }
 
         // Start simulation
         
@@ -185,8 +195,24 @@ public class EnhancedSimulationManager {
     // Load cloudlets from file or generate synthetic workload
     private List<Cloudlet> loadCloudlets() throws IOException {
         if (request.getWorkloadPath() != null && !request.isUseDefaultWorkload()) {
-
-            return new DatasetUtils().loadWorkload(request.getWorkloadPath(), request.getNumCloudlets());
+            // Try enhanced loader first for arrival time support
+            try {
+                DatasetUtils.WorkloadData workloadData = new DatasetUtils()
+                    .loadWorkloadWithTiming(request.getWorkloadPath(), request.getNumCloudlets());
+                
+                // Store arrival times if present (for future staged submission)
+                if (workloadData.hasArrivalTimes()) {
+                    System.out.println("[DEBUG] Workload has arrival times - will use staged submission");
+                    // Store in request for later use
+                    request.setArrivalTimes(workloadData.arrivalTimes);
+                }
+                
+                return workloadData.cloudlets;
+            } catch (Exception e) {
+                // Fallback to legacy loader if enhanced fails
+                System.out.println("[DEBUG] enhanced fail, fallback to legacy loader: " + e.getMessage());
+                return new DatasetUtils().loadWorkload(request.getWorkloadPath(), request.getNumCloudlets());
+            }
         }
 
         return generateSyntheticWorkload();
@@ -223,6 +249,51 @@ public class EnhancedSimulationManager {
             cloudlets.add(cloudlet);
         }
         return cloudlets;
+    }
+    
+    /**
+     * Submit cloudlets with timing - groups by time windows and schedules submission
+     */
+    private void submitCloudletsWithTiming(CustomSchedulingBroker broker, List<Cloudlet> cloudlets, List<Double> arrivalTimes) {
+        System.out.println("[DEBUG] Submitting cloudlets with arrival times");
+        
+        // Group cloudlets by arrival time windows (1 second buckets)
+        Map<Integer, List<Cloudlet>> timeWindows = new java.util.TreeMap<>();
+        
+        for (int i = 0; i < cloudlets.size() && i < arrivalTimes.size(); i++) {
+            Double arrivalTime = arrivalTimes.get(i);
+            if (arrivalTime == null) arrivalTime = 0.0;
+            
+            // Round to nearest second for bucketing
+            int timeWindow = (int) Math.round(arrivalTime);
+            
+            timeWindows.computeIfAbsent(timeWindow, k -> new ArrayList<>())
+                      .add(cloudlets.get(i));
+        }
+        
+        System.out.println("[DEBUG] Grouped cloudlets into " + timeWindows.size() + " time windows");
+        if (!timeWindows.isEmpty()) {
+            System.out.println("[DEBUG] Time windows range from " + timeWindows.keySet().iterator().next() + 
+                               "s to " + ((java.util.TreeMap<Integer, List<Cloudlet>>)timeWindows).lastKey() + "s");
+        }
+        
+        // Schedule batch submissions based on arrival times
+        for (Map.Entry<Integer, List<Cloudlet>> entry : timeWindows.entrySet()) {
+            double submitTime = entry.getKey();
+            List<Cloudlet> batch = entry.getValue();
+            
+            if (submitTime <= 0) {
+                // Submit immediately for time 0
+                broker.submitCloudletList(batch);
+                System.out.println("[DEBUG] Submitted " + batch.size() + " cloudlets immediately (t=0)");
+            } else {
+                // Schedule for later submission
+                broker.queueBatchForSubmission(batch, submitTime);
+                System.out.println("[DEBUG] Scheduled " + batch.size() + " cloudlets for submission at t=" + submitTime + "s");
+            }
+        }
+        
+        System.out.println("[DEBUG] Staged submission configured with " + timeWindows.size() + " time windows");
     }
 }
 

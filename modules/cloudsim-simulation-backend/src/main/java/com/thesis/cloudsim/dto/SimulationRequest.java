@@ -3,6 +3,8 @@ package com.thesis.cloudsim.dto;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import java.util.List;
 
 // DTO = simple data carrier; Lombok generates getters/setters for brevity
 @Data
@@ -41,6 +43,13 @@ public class SimulationRequest {
     private double energyWeight = 0.25;
     private double loadBalanceWeight = 0.25;
     
+    // Optional arrival times for staged submission (populated by DatasetUtils if present in CSV)
+    @JsonIgnore
+    private transient List<Double> arrivalTimes;
+    
+    // Control whether to use arrival times for staged submission (default: batch mode)
+    private boolean useArrivalTimes = false;
+    
     // iteration 
-    private int iterations = 1;  // n times default 
+    private int iterations = 1;  // n times default
 }

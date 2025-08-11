@@ -25,11 +25,14 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.Map;
 import java.util.HashMap;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @RestController
 @RequestMapping("/api")
 public class ApiController {
 
+    private static final Logger logger = LoggerFactory.getLogger(ApiController.class);
     private final ISchedulingAlgorithm epso;
     private final ISchedulingAlgorithm eaco;
     private final ObjectMapper objectMapper;
@@ -69,7 +72,7 @@ public class ApiController {
     public ResponseEntity<?> runIterations(@RequestBody SimulationRequest request) {
         try {
             ISchedulingAlgorithm algorithm = getAlgorithm(request.getOptimizationAlgorithm());
-            System.out.println("[DEBUG] Running " + request.getIterations() + " iterations");
+            logger.debug("Running {} iterations", request.getIterations());
             IterationResults results = iterationService.runIterations(algorithm, request);
             return ResponseEntity.ok(results);
         } catch (Exception e) {
@@ -132,17 +135,17 @@ public class ApiController {
     @PostMapping("/compare")
     public ResponseEntity<?> compareAlgorithms(@RequestBody SimulationRequest request) {
         try {
-            System.out.println("[DEBUG] Starting algorithm comparison with paired t-test analysis");
+            logger.debug("Starting algorithm comparison with paired t-test analysis");
             
             // Ensure we have enough iterations for statistical validity
             if (request.getIterations() < 30) {
-                System.out.println("[DEBUG] Setting iterations to 30 for statistical significance");
+                logger.debug("Setting iterations to 30 for statistical significance");
                 request.setIterations(30);
             }
             
             ComparisonResults results = comparisonService.runComparison(request);
             
-            System.out.println("[DEBUG] Comparison completed. Winner: " + 
+            logger.debug("Comparison completed. Winner: {}", 
                 results.getTTestResults().getOverallWinner());
             
             return ResponseEntity.ok(results);
@@ -163,7 +166,7 @@ public class ApiController {
             
             // Ensure we have enough iterations for statistical validity
             if (request.getIterations() < 30) {
-                System.out.println("[DEBUG] Setting iterations to 30 for statistical significance");
+                logger.debug("Setting iterations to 30 for statistical significance");
                 request.setIterations(30);
             }
             
@@ -179,16 +182,17 @@ public class ApiController {
     
     private ISchedulingAlgorithm getAlgorithm(String algorithmName) {
         if ("EPSO".equalsIgnoreCase(algorithmName)) {
-            System.out.println("[DEBUG] Using EPSO algorithm");
+            logger.debug("Using EPSO algorithm");
             return epso;
         } else {
-            System.out.println("[DEBUG] Using EACO algorithm");
+            logger.debug("Using EACO algorithm");
             return eaco;
         }
     }
     
     private ResponseEntity<?> createErrorResponse(Exception e, String algorithm, String details) {
-        e.printStackTrace();
+        logger.error("Error in {} algorithm{}: {}", algorithm, 
+            details != null ? " (" + details + ")" : "", e.getMessage(), e);
         Map<String, String> errorResponse = new HashMap<>();
         errorResponse.put("error", e.getClass().getSimpleName());
         errorResponse.put("message", e.getMessage());
@@ -200,8 +204,8 @@ public class ApiController {
     }
     
     private Path saveUploadedFile(MultipartFile file) throws IOException {
-        System.out.println("[DEBUG] File name: " + file.getOriginalFilename());
-        System.out.println("[DEBUG] File size: " + file.getSize());
+        logger.debug("File name: {}", file.getOriginalFilename());
+        logger.debug("File size: {}", file.getSize());
         Path tempFile = Files.createTempFile("workload", ".csv");
         Files.copy(file.getInputStream(), tempFile, StandardCopyOption.REPLACE_EXISTING);
         return tempFile;
@@ -212,7 +216,7 @@ public class ApiController {
             try {
                 Files.deleteIfExists(tempFile);
             } catch (IOException e) {
-                System.err.println("Failed to delete temp file: " + e.getMessage());
+                logger.warn("Failed to delete temp file: {}", e.getMessage());
             }
         }
     }
@@ -220,8 +224,10 @@ public class ApiController {
     private SimulationRequest mapParamsToRequest(Map<String, String> params) {
         SimulationRequest request = new SimulationRequest();
         
-        System.out.println("[DEBUG] mapParamsToRequest - All received params:");
-        params.forEach((key, value) -> System.out.println("  " + key + " = " + value));
+        if (logger.isDebugEnabled()) {
+            logger.debug("mapParamsToRequest - All received params:");
+            params.forEach((key, value) -> logger.debug("  {} = {}", key, value));
+        }
         
         try {
 
@@ -244,9 +250,9 @@ public class ApiController {
             request.setUseDefaultWorkload(Boolean.parseBoolean(params.getOrDefault("useDefaultWorkload", "false")));
             request.setIterations(Integer.parseInt(params.getOrDefault("iterations", "1")));
             
-            System.out.println("[DEBUG] Successfully created SimulationRequest with " + request.getIterations() + " iterations");
+            logger.debug("Successfully created SimulationRequest with {} iterations", request.getIterations());
         } catch (NumberFormatException e) {
-            System.err.println("[ERROR] Failed to parse numeric parameter: " + e.getMessage());
+            logger.error("Failed to parse numeric parameter: {}", e.getMessage());
             throw e;
         }
         

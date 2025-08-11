@@ -5,18 +5,16 @@ import org.cloudbus.cloudsim.Vm;
 import java.util.List;
 import java.util.Map;
 
-/**
- * Interface for scheduling algorithms
- * Provides contract for task scheduling optimization algorithms
+/** 
+ * I define this interface so that EPSO and EACO algorithms can be swapped interchangeably
+ * without modifying the broker or simulation manager code
  */
 public interface ISchedulingAlgorithm {
     
     /**
-     * Schedule cloudlets to VMs using the algorithm's optimization strategy
-     * @param cloudlets List of cloudlets to be scheduled
-     * @param vms List of available VMs
-     * @param parameters Algorithm-specific parameters
-     * @return Map of cloudlet to VM assignments
+     * 
+     * I return a Map here so that each cloudlet has exactly one VM assignment,
+     * preventing duplicate assignments and making the mapping explicit
      */
     Map<Cloudlet, Vm> schedule(List<Cloudlet> cloudlets, List<Vm> vms, AlgorithmParameters parameters);
     
@@ -27,13 +25,17 @@ public interface ISchedulingAlgorithm {
     String getAlgorithmName();
     
     /**
-     * Get algorithm-specific metrics after scheduling
-     * @return Map of metric names to values
+     * 
+     * I use a Map<String, Double> here so that algorithms can report custom metrics
+     * without changing the interface (e.g., EACO can report pheromone convergence)
+     * 
      */
     Map<String, Double> getMetrics();
     
     /**
      * Reset algorithm state for new scheduling session
+     * I include this method so that algorithm instances can be reused across multiple
+     * simulations without state pollution from previous runs
      */
     void reset();
 }

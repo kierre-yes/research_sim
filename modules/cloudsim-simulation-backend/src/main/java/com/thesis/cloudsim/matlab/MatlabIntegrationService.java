@@ -152,8 +152,8 @@ public class MatlabIntegrationService {
                 engine.eval("results.vmUtilization = vmUtilData;");
             }
             
-            // Use the simpler generateComparisonPlots for now
-            logger.info("Calling MATLAB generateComparisonPlots function...");
+            // Call generateComparisonPlots with all explicit parameters
+            logger.info("Calling MATLAB generateComparisonPlots function with all parameters...");
             try {
                 // First check if the script exists
                 engine.eval("exist('generateComparisonPlots', 'file')");
@@ -164,8 +164,14 @@ public class MatlabIntegrationService {
                 engine.eval("addpath('src/main/resources/matlab');");
                 logger.debug("Added MATLAB script path");
                 
-                engine.eval("plotPaths = generateComparisonPlots(avgResponseTime, makespan, runId);");
-                logger.info("MATLAB function executed successfully");
+                // Call with all explicit parameters (no evalin needed)
+                String matlabCall = String.format(
+                    "plotPaths = generateComparisonPlots(%.4f, %.4f, '%s', %.4f, %.4f, '%s', %.4f, %.4f, vmUtilData);",
+                    responseTime, makespan, runId, utilization, loadBalance, algorithmName, throughput, results.getEnergyConsumption()
+                );
+                logger.debug("MATLAB call: {}", matlabCall);
+                engine.eval(matlabCall);
+                logger.info("MATLAB function executed successfully with explicit parameters");
                 
                 // If we have iteration data, perform paired t-test analysis
                 /*
