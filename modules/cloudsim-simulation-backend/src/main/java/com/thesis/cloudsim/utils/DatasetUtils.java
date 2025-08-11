@@ -106,8 +106,8 @@ public class DatasetUtils {
                     }
                     
                     // Convert normalized values to bytes (assuming max 1GB = 1024*1024*1024 bytes)
-                    long fileSize = Math.max(300, (long)(normalizedFileSize * 1024 * 1024 * 1024));
-                    long outputSize = Math.max(300, (long)(normalizedOutputSize * 1024 * 1024 * 1024));
+                    long fileSize = scaleToBytes(normalizedFileSize);
+                    long outputSize = scaleToBytes(normalizedOutputSize);
 
                     Cloudlet cl = new Cloudlet(cloudletId++, length, pes, fileSize, outputSize, 
                         new UtilizationModelFull(), new UtilizationModelFull(), new UtilizationModelFull());
@@ -199,8 +199,8 @@ public class DatasetUtils {
                         
                         // If values are small (< 1), treat as normalized
                         if (fsValue <= 1.0) {
-                            fileSize = Math.max(300, (long)(fsValue * 1024 * 1024 * 1024));
-                            outputSize = Math.max(300, (long)(osValue * 1024 * 1024 * 1024));
+                            fileSize = scaleToBytes(fsValue);
+                            outputSize = scaleToBytes(osValue);
                         } else {
                             fileSize = Math.max(300, (long)fsValue);
                             outputSize = Math.max(300, (long)osValue);
@@ -221,8 +221,8 @@ public class DatasetUtils {
                         double osValue = parseColumnAsDouble(tokens, columnIndex, "output_size", 0.01);
                         
                         // Google traces seem to have normalized values
-                        fileSize = Math.max(300, (long)(fsValue * 1024 * 1024 * 1024));
-                        outputSize = Math.max(300, (long)(osValue * 1024 * 1024 * 1024));
+                        fileSize = scaleToBytes(fsValue);
+                        outputSize = scaleToBytes(osValue);
                         
                         // Calculate length from cpu_request
                         double cpuRequest = parseColumnAsDouble(tokens, columnIndex, "cpu_request", 0.01);
@@ -358,5 +358,10 @@ public class DatasetUtils {
     private int parseColumnAsInt(String[] tokens, Map<String, Integer> columnIndex, String columnName, int defaultValue) {
         double value = parseColumnAsDouble(tokens, columnIndex, columnName, (double)defaultValue);
         return Math.max(1, (int)Math.round(value));
+    }
+
+    // Small helper: scale normalized [0,1] values to bytes (max 1GB), enforce 300B minimum
+    private static long scaleToBytes(double normalized) {
+        return Math.max(300, (long)(normalized * 1024 * 1024 * 1024));
     }
 }

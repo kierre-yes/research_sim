@@ -63,41 +63,9 @@ public class EnhancedSimulationManager {
         // Create broker
         CustomSchedulingBroker broker = null;
         try {
-            // Set algorithm parameters
-            AlgorithmParameters params = new AlgorithmParameters();
-            params.setParameter(AlgorithmParameters.MAKESPAN_WEIGHT, request.getMakespanWeight());
-            params.setParameter(AlgorithmParameters.COST_WEIGHT, request.getCostWeight());
-            params.setParameter(AlgorithmParameters.ENERGY_WEIGHT, request.getEnergyWeight());
-            params.setParameter(AlgorithmParameters.LOAD_BALANCE_WEIGHT, request.getLoadBalanceWeight());
-            
-            // Configure algorithm-specific parameters
-            if ("EPSO".equalsIgnoreCase(request.getOptimizationAlgorithm())) {
-                // PSO parameters - Enhanced configuration for better performance
-                params.setParameter(AlgorithmParameters.MAX_ITERATIONS, 150);  // More iterations for EPSO
-                params.setParameter(AlgorithmParameters.POPULATION_SIZE, 40);  // Larger swarm for better exploration
-                params.setParameter(AlgorithmParameters.INERTIA_WEIGHT, 0.9);
-                params.setParameter(AlgorithmParameters.INERTIA_WEIGHT_MAX, 0.9);
-                params.setParameter(AlgorithmParameters.INERTIA_WEIGHT_MIN, 0.4);
-                params.setParameter(AlgorithmParameters.COGNITIVE_COEFFICIENT, 2.0);
-                params.setParameter(AlgorithmParameters.SOCIAL_COEFFICIENT, 2.0);
-                params.setParameter(AlgorithmParameters.MAX_VELOCITY, 10.0);
-                params.setParameter(AlgorithmParameters.MIN_VELOCITY, -10.0);
-                params.setParameter(AlgorithmParameters.MAX_VELOCITY_INITIAL, 6.0);
-                params.setParameter(AlgorithmParameters.MAX_VELOCITY_FINAL, 1.0);
-            } else {
-                // ACO parameters
-                params.setParameter(AlgorithmParameters.MAX_ITERATIONS, 100);
-                params.setParameter(AlgorithmParameters.POPULATION_SIZE, 30);
-                params.setParameter(AlgorithmParameters.PHEROMONE_DECAY, 0.5);
-                params.setParameter(AlgorithmParameters.ALPHA, 1.0);
-                params.setParameter(AlgorithmParameters.BETA, 2.0);
-                params.setParameter(AlgorithmParameters.INITIAL_PHEROMONE, 0.1);
-                params.setParameter(AlgorithmParameters.MIN_PHEROMONE, 0.01);
-                params.setParameter(AlgorithmParameters.MAX_PHEROMONE, 1.0);
-                params.setParameter(AlgorithmParameters.EVAPORATION_MIN, 0.1);
-                params.setParameter(AlgorithmParameters.EVAPORATION_MAX, 0.9);
-            }
-            
+            // Build algorithm parameters via helper to keep logic centralized
+            AlgorithmParameters params = buildAlgorithmParameters(request);
+
             // Get algorithm type
             String algorithmType = request.getOptimizationAlgorithm();
             broker = new CustomSchedulingBroker("Broker", algorithmType, params);
@@ -294,6 +262,41 @@ public class EnhancedSimulationManager {
         }
         
         System.out.println("[DEBUG] Staged submission configured with " + timeWindows.size() + " time windows");
+    }
+
+    // Helper to construct algorithm parameters without changing behavior
+    private AlgorithmParameters buildAlgorithmParameters(SimulationRequest request) {
+        AlgorithmParameters params = new AlgorithmParameters();
+        params.setParameter(AlgorithmParameters.MAKESPAN_WEIGHT, request.getMakespanWeight());
+        params.setParameter(AlgorithmParameters.COST_WEIGHT, request.getCostWeight());
+        params.setParameter(AlgorithmParameters.ENERGY_WEIGHT, request.getEnergyWeight());
+        params.setParameter(AlgorithmParameters.LOAD_BALANCE_WEIGHT, request.getLoadBalanceWeight());
+
+        if ("EPSO".equalsIgnoreCase(request.getOptimizationAlgorithm())) {
+            params.setParameter(AlgorithmParameters.MAX_ITERATIONS, 150);
+            params.setParameter(AlgorithmParameters.POPULATION_SIZE, 40);
+            params.setParameter(AlgorithmParameters.INERTIA_WEIGHT, 0.9);
+            params.setParameter(AlgorithmParameters.INERTIA_WEIGHT_MAX, 0.9);
+            params.setParameter(AlgorithmParameters.INERTIA_WEIGHT_MIN, 0.4);
+            params.setParameter(AlgorithmParameters.COGNITIVE_COEFFICIENT, 2.0);
+            params.setParameter(AlgorithmParameters.SOCIAL_COEFFICIENT, 2.0);
+            params.setParameter(AlgorithmParameters.MAX_VELOCITY, 10.0);
+            params.setParameter(AlgorithmParameters.MIN_VELOCITY, -10.0);
+            params.setParameter(AlgorithmParameters.MAX_VELOCITY_INITIAL, 6.0);
+            params.setParameter(AlgorithmParameters.MAX_VELOCITY_FINAL, 1.0);
+        } else {
+            params.setParameter(AlgorithmParameters.MAX_ITERATIONS, 100);
+            params.setParameter(AlgorithmParameters.POPULATION_SIZE, 30);
+            params.setParameter(AlgorithmParameters.PHEROMONE_DECAY, 0.5);
+            params.setParameter(AlgorithmParameters.ALPHA, 1.0);
+            params.setParameter(AlgorithmParameters.BETA, 2.0);
+            params.setParameter(AlgorithmParameters.INITIAL_PHEROMONE, 0.1);
+            params.setParameter(AlgorithmParameters.MIN_PHEROMONE, 0.01);
+            params.setParameter(AlgorithmParameters.MAX_PHEROMONE, 1.0);
+            params.setParameter(AlgorithmParameters.EVAPORATION_MIN, 0.1);
+            params.setParameter(AlgorithmParameters.EVAPORATION_MAX, 0.9);
+        }
+        return params;
     }
 }
 

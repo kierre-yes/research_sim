@@ -54,15 +54,7 @@ public class ApiController {
     @PostMapping("/run")
     public ResponseEntity<?> runSimulation(@RequestBody SimulationRequest request) {
         try {
-            if (request.getIterations() > 1) {
-                return runIterations(request);
-            }
-            
-            ISchedulingAlgorithm algorithm = getAlgorithm(request.getOptimizationAlgorithm());
-            EnhancedSimulationManager manager = new EnhancedSimulationManager(algorithm, request);
-            SimulationResults results = manager.run();
-
-            return ResponseEntity.ok(results);
+            return runOrIterate(request);
         } catch (Exception e) {
             return createErrorResponse(e, request.getOptimizationAlgorithm(), null);
         }
@@ -91,16 +83,7 @@ public class ApiController {
             tempFile = saveUploadedFile(file);
             request.setWorkloadPath(tempFile.toString());
             
-            if (request.getIterations() > 1) {
-                ISchedulingAlgorithm algorithm = getAlgorithm(request.getOptimizationAlgorithm());
-                IterationResults results = iterationService.runIterations(algorithm, request);
-                return ResponseEntity.ok(results);
-            }
-            
-            ISchedulingAlgorithm algorithm = getAlgorithm(request.getOptimizationAlgorithm());
-            EnhancedSimulationManager manager = new EnhancedSimulationManager(algorithm, request);
-            SimulationResults results = manager.run();
-            return ResponseEntity.ok(results);
+            return runOrIterate(request);
         } catch (Exception e) {
             return createErrorResponse(e, params.get("optimizationAlgorithm"), "with-file");
         } finally {
@@ -118,9 +101,7 @@ public class ApiController {
             tempFile = saveUploadedFile(file);
             request.setWorkloadPath(tempFile.toString());
             
-            ISchedulingAlgorithm algorithm = getAlgorithm(request.getOptimizationAlgorithm());
-            IterationResults results = iterationService.runIterations(algorithm, request);
-            return ResponseEntity.ok(results);
+            return runOrIterate(request);
         } catch (Exception e) {
             return createErrorResponse(e, params.get("optimizationAlgorithm"), params.get("iterations"));
         } finally {
@@ -257,5 +238,18 @@ public class ApiController {
         }
         
         return request;
+    }
+
+    // Centralized runner to avoid duplicating logic across endpoints
+    private ResponseEntity<?> runOrIterate(SimulationRequest request) throws Exception {
+        if (request.getIterations() > 1) {
+            ISchedulingAlgorithm algorithm = getAlgorithm(request.getOptimizationAlgorithm());
+            IterationResults results = iterationService.runIterations(algorithm, request);
+            return ResponseEntity.ok(results);
+        }
+        ISchedulingAlgorithm algorithm = getAlgorithm(request.getOptimizationAlgorithm());
+        EnhancedSimulationManager manager = new EnhancedSimulationManager(algorithm, request);
+        SimulationResults results = manager.run();
+        return ResponseEntity.ok(results);
     }
 }
