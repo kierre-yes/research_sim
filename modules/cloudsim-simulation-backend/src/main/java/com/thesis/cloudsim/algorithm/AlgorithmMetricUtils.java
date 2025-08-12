@@ -67,8 +67,8 @@ public final class AlgorithmMetricUtils {
         
         // I define cost constants based on typical cloud pricing
         // These can be adjusted to match specific cloud provider rates
-        final double CPU_COST_PER_MIPS_SEC = 0.00001;
-        final double RAM_COST_PER_MB_SEC = 0.000005;
+        final double CPU_COST_PER_MIPS_SEC = 0.000001;   // 1e-6 USD per MIPS-second
+        final double RAM_COST_PER_MB_SEC   = 0.0000005;  // 5e-7 USD per MB-second
         final double STORAGE_COST_PER_MB_SEC = 0.000001;
         final double BANDWIDTH_COST_PER_MB = 0.00001;
         
@@ -213,12 +213,13 @@ public final class AlgorithmMetricUtils {
     
 
     /**
-     * Calculate load balance using Degree of Imbalance (DI) metric
+     * calculate Degree of Imbalance (DI) metric
      * 
-     * I measure how evenly work is distributed across VMs
-     * Lower values indicate better load balance (0 = perfect balance)
+     * measures how unevenly work is distributed across VMs
+     * ower values indicate better balance (0 = perfect balance)
+     * higher values indicate worse balance (more imbalance)
      */
-    public static double loadBalance(Map<Cloudlet, Vm> schedule) {
+    public static double degreeOfImbalance(Map<Cloudlet, Vm> schedule) {
         Map<Vm, Double> vmCompletionTimes = new HashMap<>();
         
         // I calculate total execution time for each VM
@@ -257,6 +258,14 @@ public final class AlgorithmMetricUtils {
         }
         
         return (maxTime - minTime) / averageTime;
+    }
+    
+    /**
+     * @deprecated alternative solution muna
+     */
+    @Deprecated
+    public static double loadBalance(Map<Cloudlet, Vm> schedule) {
+        return degreeOfImbalance(schedule);
     }
 
     /**

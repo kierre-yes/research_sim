@@ -18,6 +18,9 @@ public class ComparisonResults {
     private String workloadName;
     private int iterations;
     private long totalExecutionTime;
+    private boolean iterationsAdjusted;
+    private int originalIterations;
+    private String adjustmentMessage;
 
     // run metadata
     private String runId;

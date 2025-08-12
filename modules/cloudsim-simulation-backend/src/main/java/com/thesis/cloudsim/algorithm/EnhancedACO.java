@@ -329,7 +329,7 @@ public class EnhancedACO implements ISchedulingAlgorithm {
         metrics.put("makespan", AlgorithmMetricUtils.makespan(schedule));
         metrics.put("cost", AlgorithmMetricUtils.cost(schedule));
         metrics.put("energy", AlgorithmMetricUtils.energy(schedule));
-        metrics.put("loadBalance", AlgorithmMetricUtils.loadBalance(schedule));
+        metrics.put("degreeOfImbalance", AlgorithmMetricUtils.degreeOfImbalance(schedule));
         metrics.put("responseTime", AlgorithmMetricUtils.responseTime(schedule));
         metrics.put("iterations", (double) currentIteration);
         metrics.put("converged", currentIteration < parameters.getInt(AlgorithmParameters.MAX_ITERATIONS) ? 1.0 : 0.0);

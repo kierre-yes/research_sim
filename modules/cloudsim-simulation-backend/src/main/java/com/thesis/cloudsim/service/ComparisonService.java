@@ -47,10 +47,13 @@ public class ComparisonService {
         
         long startTime = System.currentTimeMillis();
         
-        // Ensure we have multiple iterations for statistical validity
-        if (request.getIterations() < 2) {
-            logger.warn("Iterations set to {} but need at least 2 for t-test. Setting to 30.", request.getIterations());
-            request.setIterations(30); // Default to 30 iterations for statistical significance
+        // ensure we have multiple iterations for statistical validity
+        boolean iterationsAdjusted = false;
+        int originalIterations = request.getIterations();
+        if (request.getIterations() < 30) {
+            logger.warn("Iterations set to {} but need at least 30 for t-test validity. Adjusting to 30.", request.getIterations());
+            request.setIterations(30);
+            iterationsAdjusted = true;
         }
         
         // Run iterations for both algorithms
@@ -74,6 +77,14 @@ public class ComparisonService {
         comparison.setWorkloadName(request.getWorkloadPath() != null ? 
             "Custom Workload" : "Random Workload");
         comparison.setIterations(request.getIterations());
+        comparison.setIterationsAdjusted(iterationsAdjusted);
+        comparison.setOriginalIterations(originalIterations);
+        if (iterationsAdjusted) {
+            comparison.setAdjustmentMessage(String.format(
+                "Iterations were automatically adjusted from %d to %d to ensure statistical validity (minimum 30 required for paired t-test).",
+                originalIterations, request.getIterations()
+            ));
+        }
 
         // Populate run metadata (top-level)
         comparison.setRunId(java.util.UUID.randomUUID().toString());

@@ -324,7 +324,7 @@ public class EnhancedPSO implements ISchedulingAlgorithm {
         metrics.put("makespan", AlgorithmMetricUtils.makespan(sched));
         metrics.put("cost", AlgorithmMetricUtils.cost(sched));
         metrics.put("energy", AlgorithmMetricUtils.energy(sched));
-        metrics.put("loadBalance", AlgorithmMetricUtils.loadBalance(sched));
+        metrics.put("degreeOfImbalance", AlgorithmMetricUtils.degreeOfImbalance(sched));
         metrics.put("responseTime", AlgorithmMetricUtils.responseTime(sched));
         metrics.put("iterations", (double) currentIteration);
         

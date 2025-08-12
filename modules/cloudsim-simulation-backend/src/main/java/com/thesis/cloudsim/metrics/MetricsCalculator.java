@@ -94,16 +94,12 @@ public class MetricsCalculator {
     }
 
 public double calculateResourceUtilization() {
-    System.out.println("[DEBUG] Starting resource utilization calculation");
     if (vms.isEmpty() || datacenter == null) {
-        System.out.println("[DEBUG] VMs empty or datacenter null - returning 0");
         return 0.0;
     }
     
     double makespan = calculateMakespan();
-    System.out.println("[DEBUG] Makespan: " + makespan);
     if (makespan <= 0) {
-        System.out.println("[DEBUG] Makespan <= 0 - returning 0");
         return 0.0;
     }
     
@@ -134,14 +130,11 @@ public double calculateResourceUtilization() {
         if (host != null) {
             hostToVmsMap.computeIfAbsent(host, k -> new ArrayList<>()).add(vm);
             vmsWithHosts++;
-        } else {
-            System.out.println("[DEBUG] VM " + vm.getId() + " has null host!");
         }
     }
-    System.out.println("[DEBUG] VMs with hosts: " + vmsWithHosts + " out of " + vms.size());
     
     double totalUtilization = 0.0;
-    int numberOfHosts = datacenter.getHostList().size();
+    int activeHosts = 0;  // Count only hosts with VMs
     
     // Calculate utilization for each host
     for (Object hostObj : datacenter.getHostList()) {
@@ -149,10 +142,11 @@ public double calculateResourceUtilization() {
         List<Vm> hostVms = hostToVmsMap.getOrDefault(host, new ArrayList<>());
         
         if (hostVms.isEmpty()) {
-            // Host has no VMs, utilization is 0
+            // Host has no VMs, skip it in utilization calculation
             continue;
         }
         
+        activeHosts++;  // Count this host as active
         double hostMips = host.getTotalMips();
         double hostUtilization = 0.0;
         
@@ -165,11 +159,9 @@ public double calculateResourceUtilization() {
             for (Cloudlet c : vmCloudlets) {
                 double execTime = c.getActualCPUTime();
                 double cloudletLength = c.getCloudletLength();
-                System.out.println("[DEBUG] Cloudlet " + c.getCloudletId() + ": length=" + cloudletLength + ", execTime=" + execTime);
                 if (execTime > 0) {
                     double cloudletMips = cloudletLength / execTime;
                     double contribution = (cloudletMips / vmMips) * (execTime / makespan);
-                    System.out.println("[DEBUG]   cloudletMips=" + cloudletMips + ", vmMips=" + vmMips + ", contribution=" + contribution);
                     vmUtilization += contribution;
                 }
             }
@@ -184,28 +176,28 @@ public double calculateResourceUtilization() {
         totalUtilization += hostUtilization;
     }
     
-    // Return average utilization across all hosts as percentage
-    // Formula: Resource Utilization = (∑Uj) / m * 100
-    double result = (totalUtilization / numberOfHosts) * 100.0;
-    System.out.println("[DEBUG] Total utilization: " + totalUtilization + ", number of hosts: " + numberOfHosts);
-    System.out.println("[DEBUG] Final resource utilization: " + result + "%");
+    // Return average utilization across ACTIVE hosts only
+    // Formula: Resource Utilization = (∑Uj) / m_active * 100
+    if (activeHosts == 0) {
+        return 0.0;
+    }
+    
+    double result = (totalUtilization / activeHosts) * 100.0;
     return result;
 }
 
     public double calculateEnergyConsumption() {
-        System.out.println("[DEBUG] Starting energy consumption calculation");
-        // Calculate energy consumption
+        // Use standardized energy model matching AlgorithmMetricUtils
+        final double P_MAX = 215.0;    // Maximum power at 100% utilization (Watts)
+        final double P_IDLE = 162.0;   // Power when server is idle but on (Watts)
+        final double ALPHA = 1.4;      // Non-linear scaling factor
+        
         double totalEnergy = 0.0;
         double makespan = calculateMakespan();
         
         if (makespan <= 0) {
-            System.out.println("[DEBUG] Energy calc: makespan is 0 or negative");
             return 0.0;
         }
-        
-        System.out.println("[DEBUG] Energy calc: makespan = " + makespan + " seconds");
-        System.out.println("[DEBUG] Energy calc: number of hosts = " + datacenter.getHostList().size());
-        System.out.println("[DEBUG] Energy calc: number of VMs = " + vms.size());
         
         // Build map of hosts to their VMs using preserved mappings
         Map<Host, List<Vm>> hostToVmsMap = new HashMap<>();
