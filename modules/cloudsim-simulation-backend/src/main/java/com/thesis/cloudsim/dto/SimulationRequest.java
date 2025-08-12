@@ -32,6 +32,9 @@ public class SimulationRequest {
     private String workloadType;           // csv/rand
     private boolean useDefaultWorkload;
     private String workloadPath;           // path if csv
+
+    // reproducibility
+    private Long seed;                     // optional deterministic seed
     
     // Algorithm-specific parameters (optional)
     private double inertiaWeightStart;     // pso param

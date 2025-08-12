@@ -189,7 +189,8 @@ public class EnhancedSimulationManager {
 
     private List<Cloudlet> generateSyntheticWorkload() {
         List<Cloudlet> cloudlets = new ArrayList<>();
-        Random random = new Random(42);
+        long seed = request.getSeed() != null ? request.getSeed() : 42L;
+        Random random = new Random(seed);
 
         for (int i = 0; i < request.getNumCloudlets(); i++) {
 

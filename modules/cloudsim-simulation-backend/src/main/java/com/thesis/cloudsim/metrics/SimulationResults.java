@@ -3,10 +3,18 @@ package com.thesis.cloudsim.metrics;
 import lombok.Builder;
 import lombok.Data;
 import java.util.List;
+import java.util.Map;
 
 @Data
 @Builder
 public class SimulationResults {
+    // Run metadata for reproducibility
+    private String runId;
+    private Long seed;
+    private Map<String, Object> configSnapshot;
+    private String datasetId;
+    
+    // Existing fields
     private Summary summary;
     private List<VmUtilization> vmUtilization;
     private List<SchedulingLogEntry> schedulingLog;

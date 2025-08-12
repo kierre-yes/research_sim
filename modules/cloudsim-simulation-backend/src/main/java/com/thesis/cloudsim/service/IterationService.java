@@ -85,6 +85,11 @@ public class IterationService {
         if (!results.isEmpty()) {
             calculateStatistics(iterationResults, results);
         }
+
+        iterationResults.setRunId(java.util.UUID.randomUUID().toString());
+        iterationResults.setSeed(request.getSeed());
+        iterationResults.setConfigSnapshot(buildConfigSnapshot(request));
+        iterationResults.setDatasetId(computeDatasetId(request.getWorkloadPath()));
         
         return iterationResults;
     }
@@ -147,5 +152,44 @@ public class IterationService {
     
     public void shutdown() {
         executorService.shutdown();
+    }
+
+    private Map<String, Object> buildConfigSnapshot(SimulationRequest r) {
+        Map<String, Object> m = new HashMap<>();
+        m.put("optimizationAlgorithm", r.getOptimizationAlgorithm());
+        m.put("numHosts", r.getNumHosts());
+        m.put("numVMs", r.getNumVMs());
+        m.put("numPesPerHost", r.getNumPesPerHost());
+        m.put("peMips", r.getPeMips());
+        m.put("ramPerHost", r.getRamPerHost());
+        m.put("bwPerHost", r.getBwPerHost());
+        m.put("storagePerHost", r.getStoragePerHost());
+        m.put("vmMips", r.getVmMips());
+        m.put("vmPes", r.getVmPes());
+        m.put("vmRam", r.getVmRam());
+        m.put("vmBw", r.getVmBw());
+        m.put("vmSize", r.getVmSize());
+        m.put("vmScheduler", r.getVmScheduler());
+        m.put("numCloudlets", r.getNumCloudlets());
+        m.put("workloadType", r.getWorkloadType());
+        m.put("useDefaultWorkload", r.isUseDefaultWorkload());
+        m.put("useArrivalTimes", r.isUseArrivalTimes());
+        m.put("iterations", r.getIterations());
+        return m;
+    }
+
+    private String computeDatasetId(String path) {
+        if (path == null || path.isBlank()) return "RANDOM";
+        try {
+            java.security.MessageDigest md = java.security.MessageDigest.getInstance("SHA-256");
+            byte[] bytes = java.nio.file.Files.readAllBytes(java.nio.file.Paths.get(path));
+            byte[] hash = md.digest(bytes);
+            StringBuilder sb = new StringBuilder();
+            for (byte b : hash) sb.append(String.format("%02x", b));
+            return sb.toString();
+        } catch (Exception e) {
+            // Fallback to filename if hashing fails
+            return new java.io.File(path).getName();
+        }
     }
 }

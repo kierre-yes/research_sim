@@ -160,8 +160,9 @@ public class DatasetUtils {
                 columnIndex.put(headers[i].trim(), i);
             }
             
-            // Detect schema type
-            boolean isNormalizedSchema = columnIndex.containsKey("length") && columnIndex.containsKey("pes");
+            // Detect schema type (accept 'length' or its alias 'task_length')
+            boolean isNormalizedSchema = (columnIndex.containsKey("length") || columnIndex.containsKey("task_length"))
+                && columnIndex.containsKey("pes");
             boolean isGoogleSchema = columnIndex.containsKey("cpu_request") || columnIndex.containsKey("arrival_ts");
             
             System.out.println("[DEBUG] Detected schema - Normalized: " + isNormalizedSchema + ", Google: " + isGoogleSchema);
@@ -189,8 +190,12 @@ public class DatasetUtils {
                     Double arrivalTime = null;
                     
                     if (isNormalizedSchema) {
-                        // Handle normalized schema (length, pes, file_size, output_size)
-                        length = parseColumnAsLong(tokens, columnIndex, "length", 1000);
+                        // Handle normalized schema (length|task_length, pes, file_size, output_size)
+                        if (columnIndex.containsKey("length")) {
+                            length = parseColumnAsLong(tokens, columnIndex, "length", 1000);
+                        } else {
+                            length = parseColumnAsLong(tokens, columnIndex, "task_length", 1000);
+                        }
                         pes = parseColumnAsInt(tokens, columnIndex, "pes", 1);
                         
                         // File sizes might be normalized [0,1] or actual values
