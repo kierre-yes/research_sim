@@ -19,6 +19,7 @@ public class TTestResults {
     private String overallWinner;
     private int significantDifferences;
     private Map<String, Object> plotPaths; // Optional: MATLAB visualization paths
+    private Map<String, Object> interpretation; // will validate later
     
     /**
      * Individual metric t-test results

@@ -18,6 +18,7 @@ import java.util.stream.Collectors;
 import org.apache.commons.math3.distribution.TDistribution;
 import org.apache.commons.math3.stat.inference.TTest;
 import org.apache.commons.math3.stat.descriptive.DescriptiveStatistics;
+import org.springframework.beans.factory.annotation.Autowired;
 
 @Service
 public class ComparisonService {
@@ -29,6 +30,9 @@ public class ComparisonService {
     
     @Autowired(required = false)
     private MatlabIntegrationService matlabService;
+    
+    @Autowired
+    private AnalysisInterpretationService analysisService;
     
     private final ISchedulingAlgorithm epso;
     private final ISchedulingAlgorithm eaco;
@@ -67,6 +71,13 @@ public class ComparisonService {
         
         // Perform paired t-test analysis
         TTestResults tTestResults = performPairedTTest(eacoResults, epsoResults, request);
+        
+        /**
+         * I generate statistical interpretations using the new analysis service
+         * to provide meaningful explanations instead of just raw numbers
+         */
+        Map<String, Object> statisticalInterpretation = analysisService.generateStatisticalInterpretation(tTestResults);
+        tTestResults.setInterpretation(statisticalInterpretation);
         
         // Build comparison results
         ComparisonResults comparison = new ComparisonResults();

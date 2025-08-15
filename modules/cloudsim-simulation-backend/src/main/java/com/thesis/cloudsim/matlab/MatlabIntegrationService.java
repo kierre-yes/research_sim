@@ -83,9 +83,17 @@ public class MatlabIntegrationService {
         try {
             ensureEngine();
             
-            // Convert Java results to MATLAB-compatible structure
-            String runId = UUID.randomUUID().toString();
-            logger.debug("Generated run ID: {}", runId);
+            /**
+             * I use the existing runId from results if available,
+             * otherwise generate a new one to avoid null errors in MATLAB
+             */
+            String runId = results.getRunId();
+            if (runId == null || runId.isEmpty()) {
+                runId = UUID.randomUUID().toString();
+                logger.debug("Generated new run ID: {}", runId);
+            } else {
+                logger.debug("Using existing run ID: {}", runId);
+            }
             
             // Create MATLAB struct with all results data
             logger.debug("Putting variables into MATLAB workspace...");
@@ -160,9 +168,22 @@ public class MatlabIntegrationService {
                 Object scriptExists = engine.getVariable("ans");
                 logger.debug("generateComparisonPlots exists check result: {}", scriptExists);
                 
-                // Add the script path if needed
-                engine.eval("addpath('src/main/resources/matlab');");
-                logger.debug("Added MATLAB script path");
+                // Add the script path if needed - use absolute path
+                String currentDir = System.getProperty("user.dir");
+                String matlabPath = currentDir + "/src/main/resources/matlab";
+
+                matlabPath = matlabPath.replace("\\", "/");
+                engine.eval("addpath('" + matlabPath + "');");
+                logger.debug("Added MATLAB script path: {}", matlabPath);
+                
+
+                engine.eval("exist('generateComparisonPlots', 'file')");
+                Object scriptExistsAfter = engine.getVariable("ans");
+                if (scriptExistsAfter == null || ((Double) scriptExistsAfter) == 0) {
+                    logger.error("generateComparisonPlots.m not found after adding path");
+                    throw new RuntimeException("MATLAB script generateComparisonPlots.m not found at: " + matlabPath);
+                }
+                logger.debug("generateComparisonPlots verified to exist after adding path");
                 
                 // Call with all explicit parameters (no evalin needed)
                 String matlabCall = String.format(

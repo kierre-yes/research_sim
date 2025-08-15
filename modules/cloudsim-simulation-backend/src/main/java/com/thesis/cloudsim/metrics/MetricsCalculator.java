@@ -487,8 +487,19 @@ public double calculateResourceUtilization() {
         return buildResults(0.0);
     }
     
+    /**
+     * I need to add overloaded methods to pass metadata
+     */
     public SimulationResults buildResults(double fitness) {
+        return buildResults(fitness, null, null, null, null);
+    }
+    
+    public SimulationResults buildResults(double fitness, String runId, Long seed, Map<String, Object> configSnapshot, String datasetId) {
         return SimulationResults.builder()
+                .runId(runId)
+                .seed(seed)
+                .configSnapshot(configSnapshot)
+                .datasetId(datasetId)
                 .summary(SimulationResults.Summary.builder()
                         .responseTime(calculateAverageResponseTime())
                         .makespan(calculateMakespan())

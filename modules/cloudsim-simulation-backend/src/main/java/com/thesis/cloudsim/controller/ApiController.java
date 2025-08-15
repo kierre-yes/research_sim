@@ -8,6 +8,8 @@ import com.thesis.cloudsim.simulation.EnhancedSimulationManager;
 import com.thesis.cloudsim.service.IterationService;
 import com.thesis.cloudsim.service.ComparisonService;
 import com.thesis.cloudsim.algorithm.ISchedulingAlgorithm;
+import com.thesis.cloudsim.matlab.MatlabIntegrationService;
+import com.thesis.cloudsim.dto.ProcessedResults;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -53,6 +55,10 @@ public class ApiController {
     
     @Autowired
     private ComparisonService comparisonService;
+    
+    // I mark MATLAB service as optional so the app works without MATLAB installed
+    @Autowired(required = false)
+    private MatlabIntegrationService matlabService;
 
     public ApiController(@Qualifier("epso") ISchedulingAlgorithm epso,
                         @Qualifier("eaco") ISchedulingAlgorithm eaco,
@@ -125,7 +131,17 @@ public class ApiController {
             normalizeAndValidate(request);
             ensureSeed(request);
             
-            return runOrIterate(request);
+            // Check if MATLAB plots are requested
+            boolean enableMatlabPlots = Boolean.parseBoolean(params.getOrDefault("enableMatlabPlots", "false"));
+            int iterations = request.getIterations();
+            
+            // I only generate plots for single iteration runs when explicitly requested
+            if (enableMatlabPlots && iterations == 1 && matlabService != null && matlabService.isReady()) {
+                logger.info("MATLAB plots requested for file-based simulation");
+                return runWithMatlabPlots(request);
+            } else {
+                return runOrIterate(request);
+            }
         } catch (Exception e) {
             return createErrorResponse(e, params.get("optimizationAlgorithm"), "with-file");
         } finally {
@@ -148,6 +164,10 @@ public class ApiController {
             normalizeAndValidate(request);
             ensureSeed(request);
             
+            // Check if MATLAB plots are requested for iterations
+            boolean enableMatlabPlots = Boolean.parseBoolean(params.getOrDefault("enableMatlabPlots", "false"));
+            
+            // For iterations, we don't generate MATLAB plots (they only work for single runs)
             return runOrIterate(request);
         } catch (Exception e) {
             return createErrorResponse(e, params.get("optimizationAlgorithm"), params.get("iterations"));
@@ -311,6 +331,43 @@ public class ApiController {
         return request;
     }
 
+    /**
+     * Run simulation with MATLAB plot generation
+     * I provide this method so file-based simulations can also generate plots
+     */
+    private ResponseEntity<?> runWithMatlabPlots(SimulationRequest request) throws Exception {
+        ISchedulingAlgorithm algorithm = getAlgorithm(request.getOptimizationAlgorithm());
+        EnhancedSimulationManager manager = new EnhancedSimulationManager(algorithm, request);
+        SimulationResults rawResults = manager.run();
+        
+        /**
+         * I add metadata before passing to MATLAB to avoid null errors
+         */
+        rawResults.setRunId(java.util.UUID.randomUUID().toString());
+        rawResults.setSeed(request.getSeed());
+        rawResults.setConfigSnapshot(createConfigSnapshot(request));
+        rawResults.setDatasetId(request.getWorkloadPath() != null ? 
+            "custom-" + request.getWorkloadPath().hashCode() : "synthetic");
+        
+        try {
+            // Process results through MATLAB to generate visualization plots
+            String algorithmName = request.getOptimizationAlgorithm() != null ? 
+                request.getOptimizationAlgorithm() : "CloudSim";
+            ProcessedResults processedResults = matlabService.processResults(rawResults, algorithmName);
+            
+            // Return the processed results with plot data
+            logger.info("Returning simulation results with MATLAB plots");
+            return ResponseEntity.ok(processedResults);
+        } catch (Exception e) {
+            logger.error("Failed to generate MATLAB plots, returning raw results", e);
+            // Fall back to raw results if plot generation fails
+            rawResults.setRunId(java.util.UUID.randomUUID().toString());
+            rawResults.setSeed(request.getSeed());
+            rawResults.setConfigSnapshot(createConfigSnapshot(request));
+            return ResponseEntity.ok(rawResults);
+        }
+    }
+    
     // Centralized runner to avoid duplicating logic across endpoints
     private ResponseEntity<?> runOrIterate(SimulationRequest request) throws Exception {
         if (request.getIterations() > 1) {

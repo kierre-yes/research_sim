@@ -7,6 +7,7 @@ import com.thesis.cloudsim.matlab.MatlabIntegrationService;
 import com.thesis.cloudsim.metrics.SimulationResults;
 import com.thesis.cloudsim.service.AsyncPlotGenerationService;
 import com.thesis.cloudsim.service.AsyncPlotGenerationService.PlotGenerationStatus;
+import com.thesis.cloudsim.service.AnalysisInterpretationService;
 import com.thesis.cloudsim.simulation.EnhancedSimulationManager;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -44,6 +45,9 @@ public class SimulationController {
     // I mark async plot service as optional for environments without plot generation
     @Autowired(required = false)
     private AsyncPlotGenerationService asyncPlotService;
+    
+    @Autowired
+    private AnalysisInterpretationService analysisService;
 
     public SimulationController(@Qualifier("epso") ISchedulingAlgorithm epso,
                                 @Qualifier("eaco") ISchedulingAlgorithm eaco) {
@@ -59,16 +63,19 @@ public class SimulationController {
      * waiting for plot generation, which can be time-consuming
      */
     @PostMapping("/raw")
-    public SimulationResults runSimulationRaw(@RequestBody SimulationRequest request) throws IOException {
+    public Map<String, Object> runSimulationRaw(@RequestBody SimulationRequest request) throws IOException {
         logger.debug("Received simulation request for algorithm: {}", request.getOptimizationAlgorithm());
         
         // I select the algorithm based on the request parameter
         ISchedulingAlgorithm algorithm;
+        String algorithmName;
         if ("EPSO".equalsIgnoreCase(request.getOptimizationAlgorithm())) {
             algorithm = epso;
+            algorithmName = "EPSO";
             logger.debug("Using EPSO algorithm");
         } else {
             algorithm = eaco;
+            algorithmName = "EACO";
             logger.debug("Using EACO algorithm");
         }
         
@@ -77,10 +84,35 @@ public class SimulationController {
         EnhancedSimulationManager manager = new EnhancedSimulationManager(algorithm, request);
         SimulationResults results = manager.run();
         
+        /**
+         * I add metadata to results for reproducibility and tracking,
+         * following the same pattern as ApiController
+         */
+        results.setRunId(java.util.UUID.randomUUID().toString());
+        results.setSeed(request.getSeed() != null ? request.getSeed() : System.currentTimeMillis());
+        results.setConfigSnapshot(createConfigSnapshot(request));
+        results.setDatasetId(request.getWorkloadPath() != null ? 
+            "custom-" + request.getWorkloadPath().hashCode() : "synthetic");
+        
         long executionTime = System.currentTimeMillis() - startTime;
         logger.info("Simulation completed in {} ms", executionTime);
         
-        return results;
+        /**
+         * I generate comprehensive analysis and interpretations
+         * to provide meaningful insights instead of placeholders
+         */
+        Map<String, Object> analysis = analysisService.generateCompleteAnalysis(results, algorithmName);
+        
+        /**
+         * I return both raw results and analysis so the frontend
+         * can display accurate interpretations
+         */
+        Map<String, Object> response = new HashMap<>();
+        response.put("simulationResults", results);
+        response.put("analysis", analysis);
+        response.put("executionTimeMs", executionTime);
+        
+        return response;
     }
 
     /**
@@ -118,6 +150,16 @@ public class SimulationController {
         
         try {
             SimulationResults raw = manager.run();
+            
+            /**
+             * I add metadata before passing to MATLAB to avoid null errors
+             */
+            raw.setRunId(java.util.UUID.randomUUID().toString());
+            raw.setSeed(request.getSeed() != null ? request.getSeed() : System.currentTimeMillis());
+            raw.setConfigSnapshot(createConfigSnapshot(request));
+            raw.setDatasetId(request.getWorkloadPath() != null ? 
+                "custom-" + request.getWorkloadPath().hashCode() : "synthetic");
+            
             String algorithmName = request.getOptimizationAlgorithm() != null ? request.getOptimizationAlgorithm() : "CloudSim";
             // I process results through MATLAB to generate visualization plots
             ProcessedResults out = matlabService.processResults(raw, algorithmName);
@@ -156,6 +198,16 @@ public class SimulationController {
         
         long startTime = System.currentTimeMillis();
         SimulationResults results = manager.run();
+        
+        /**
+         * I add metadata before passing to async plot service to avoid null errors
+         */
+        results.setRunId(java.util.UUID.randomUUID().toString());
+        results.setSeed(request.getSeed() != null ? request.getSeed() : System.currentTimeMillis());
+        results.setConfigSnapshot(createConfigSnapshot(request));
+        results.setDatasetId(request.getWorkloadPath() != null ? 
+            "custom-" + request.getWorkloadPath().hashCode() : "synthetic");
+        
         long executionTime = System.currentTimeMillis() - startTime;
         
         logger.info("Simulation completed in {} ms, submitting for async plot generation", executionTime);
@@ -257,5 +309,21 @@ public class SimulationController {
         // I return the complete results once plots are ready
         ProcessedResults results = asyncPlotService.getResults(trackingId);
         return ResponseEntity.ok(results);
+    }
+    
+    /**
+     * I create a configuration snapshot for metadata tracking
+     * Following the same pattern as ApiController
+     */
+    private Map<String, Object> createConfigSnapshot(SimulationRequest request) {
+        Map<String, Object> snapshot = new HashMap<>();
+        snapshot.put("algorithm", request.getOptimizationAlgorithm());
+        snapshot.put("numHosts", request.getNumHosts());
+        snapshot.put("numVMs", request.getNumVMs());
+        snapshot.put("numCloudlets", request.getNumCloudlets());
+        snapshot.put("workloadType", request.getWorkloadType());
+        snapshot.put("vmScheduler", request.getVmScheduler());
+        snapshot.put("iterations", request.getIterations());
+        return snapshot;
     }
 }
