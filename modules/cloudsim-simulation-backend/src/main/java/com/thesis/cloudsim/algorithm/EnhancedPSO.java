@@ -39,8 +39,22 @@ public class EnhancedPSO implements ISchedulingAlgorithm {
 
     public EnhancedPSO() {
         this.metrics = new HashMap<>();
-        // I use ThreadLocalRandom so that concurrent simulations don't interfere with each other's randomness
-        this.random = ThreadLocalRandom.current();
+        /*
+         * fix same instances
+         */
+        this.random = new Random();
+        this.particles = new ArrayList<>();
+        this.currentIteration = 0;
+        this.previousBestFitness = Double.MAX_VALUE;
+        this.stagnationCounter = 0;
+    }
+    
+    /*
+     * I provide a constructor with seed for reproducible results when needed
+     */
+    public EnhancedPSO(long seed) {
+        this.metrics = new HashMap<>();
+        this.random = new Random(seed);
         this.particles = new ArrayList<>();
         this.currentIteration = 0;
         this.previousBestFitness = Double.MAX_VALUE;

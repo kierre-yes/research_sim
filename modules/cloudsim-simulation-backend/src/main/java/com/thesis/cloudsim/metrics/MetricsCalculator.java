@@ -61,7 +61,53 @@ public class MetricsCalculator {
         this.algorithmName = algorithmName;
         this.vmToHostMapping = vmToHostMapping;
     }
-
+    
+    /*
+     * I add a private constructor for the Builder pattern to use.
+     * allows cleaner construction while keeping existing constructors.
+     */
+    private MetricsCalculator(Builder builder) {
+        this.vms = builder.vms;
+        this.datacenter = builder.datacenter;
+        this.finishedCloudlets = builder.finishedCloudlets;
+        this.algorithmName = builder.algorithmName;
+        this.vmToHostMapping = builder.vmToHostMapping;
+    }
+    
+    /*
+     * I implement the Builder pattern to provide a cleaner way to construct
+     * MetricsCalculator instances with optional parameters saves for overload constructors i guess when i revise again.
+     */
+    public static class Builder {
+        // Required 
+        private final List<Vm> vms;
+        private final Datacenter datacenter;
+        private final List<Cloudlet> finishedCloudlets;
+        
+        // Optional 
+        private String algorithmName = "Unknown";
+        private Map<Integer, Integer> vmToHostMapping = null;
+        
+        public Builder(List<Vm> vms, Datacenter datacenter, List<Cloudlet> finishedCloudlets) {
+            this.vms = vms;
+            this.datacenter = datacenter;
+            this.finishedCloudlets = finishedCloudlets;
+        }
+        
+        public Builder withAlgorithmName(String algorithmName) {
+            this.algorithmName = algorithmName;
+            return this;
+        }
+        
+        public Builder withVmToHostMapping(Map<Integer, Integer> vmToHostMapping) {
+            this.vmToHostMapping = vmToHostMapping;
+            return this;
+        }
+        
+        public MetricsCalculator build() {
+            return new MetricsCalculator(this);
+        }
+    }
 
     public double calculateAverageResponseTime() {
         if (finishedCloudlets.isEmpty()) return 0.0;
@@ -187,10 +233,8 @@ public double calculateResourceUtilization() {
 }
 
     public double calculateEnergyConsumption() {
-        // Use standardized energy model matching AlgorithmMetricUtils
-        final double P_MAX = 215.0;    // Maximum power at 100% utilization (Watts)
-        final double P_IDLE = 162.0;   // Power when server is idle but on (Watts)
-        final double ALPHA = 1.4;      // Non-linear scaling factor
+        /* the use sim constants
+         */
         
         double totalEnergy = 0.0;
         double makespan = calculateMakespan();
@@ -276,10 +320,12 @@ public double calculateResourceUtilization() {
                 // Normalize utilization
                 totalHostUtilization = Math.min(1.0, totalHostUtilization);
                 
-                // Apply power model (can be linear or non-linear)
-                double idlePower = 162.0;  // Watts at idle
-                double busyPower = 215.0;  // Watts at full load
-                double alpha = 1.0; // Power scaling factor (1.0 for linear, 1.4 for non-linear)
+                /*
+                 * here i apply now the server type, change to centralized constants to easily alter it
+                 */
+                double idlePower = SimulationConstants.EnergyModel.POWER_IDLE_WATTS;
+                double busyPower = SimulationConstants.EnergyModel.POWER_MAX_WATTS;
+                double alpha = SimulationConstants.EnergyModel.SCALING_FACTOR;
                 
                 // Calculate average power
                 double avgPower;
@@ -365,11 +411,15 @@ public double calculateResourceUtilization() {
     public double calculateTotalCost() {
         double totalCost = 0.0;
         
-        // Converted to per-unit costs for simulation
-        final double CPU_COST_PER_MIPS_HOUR = 0.00001;   // Based on net
-        final double RAM_COST_PER_MB_HOUR = 0.000005;    // RAM component
-        final double STORAGE_COST_PER_MB_HOUR = 0.000001; // Based on net
-        final double BANDWIDTH_COST_PER_MB = 0.00001;    // Data transfer cost
+        /*
+         * I use centralized cost constants from SimulationConstants.CostModel
+         * instead of hard-coding them here. This makes the cost model more
+         * maintainable and easier to adjust for different pricing scenarios.
+         */
+        final double CPU_COST_PER_MIPS_HOUR = SimulationConstants.CostModel.CPU_COST_PER_MIPS_HOUR;
+        final double RAM_COST_PER_MB_HOUR = SimulationConstants.CostModel.RAM_COST_PER_MB_HOUR;
+        final double STORAGE_COST_PER_MB_HOUR = SimulationConstants.CostModel.STORAGE_COST_PER_MB_HOUR;
+        final double BANDWIDTH_COST_PER_MB = SimulationConstants.CostModel.BANDWIDTH_COST_PER_MB;
         
         double makespan = calculateMakespan();
         double makespanHours = makespan / 3600.0; // Convert seconds to hours

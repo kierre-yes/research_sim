@@ -66,27 +66,22 @@ public class SimulationController {
     public Map<String, Object> runSimulationRaw(@RequestBody SimulationRequest request) throws IOException {
         logger.debug("Received simulation request for algorithm: {}", request.getOptimizationAlgorithm());
         
-        // I select the algorithm based on the request parameter
-        ISchedulingAlgorithm algorithm;
-        String algorithmName;
-        if ("EPSO".equalsIgnoreCase(request.getOptimizationAlgorithm())) {
-            algorithm = epso;
-            algorithmName = "EPSO";
-            logger.debug("Using EPSO algorithm");
-        } else {
-            algorithm = eaco;
-            algorithmName = "EACO";
-            logger.debug("Using EACO algorithm");
-        }
+        /*
+         * I select and reset the algorithm to ensure clean state for each request.
+         * This prevents state pollution between requests from the frontend.
+         */
+        ISchedulingAlgorithm algorithm = selectAlgorithm(request);
+        String algorithmName = algorithm.getAlgorithmName();
         
-        // I track execution time so that performance can be monitored
-        long startTime = System.currentTimeMillis();
-        EnhancedSimulationManager manager = new EnhancedSimulationManager(algorithm, request);
-        SimulationResults results = manager.run();
+        try {
+            algorithm.reset(); /* I reset before use to ensure clean state */
+            
+            long startTime = System.currentTimeMillis();
+            EnhancedSimulationManager manager = new EnhancedSimulationManager(algorithm, request);
+            SimulationResults results = manager.run();
         
         /**
-         * I add metadata to results for reproducibility and tracking,
-         * following the same pattern as ApiController
+         * I add metadata to results
          */
         results.setRunId(java.util.UUID.randomUUID().toString());
         results.setSeed(request.getSeed() != null ? request.getSeed() : System.currentTimeMillis());
@@ -94,25 +89,42 @@ public class SimulationController {
         results.setDatasetId(request.getWorkloadPath() != null ? 
             "custom-" + request.getWorkloadPath().hashCode() : "synthetic");
         
-        long executionTime = System.currentTimeMillis() - startTime;
-        logger.info("Simulation completed in {} ms", executionTime);
-        
-        /**
-         * I generate comprehensive analysis and interpretations
-         * to provide meaningful insights instead of placeholders
-         */
-        Map<String, Object> analysis = analysisService.generateCompleteAnalysis(results, algorithmName);
-        
-        /**
-         * I return both raw results and analysis so the frontend
-         * can display accurate interpretations
-         */
-        Map<String, Object> response = new HashMap<>();
-        response.put("simulationResults", results);
-        response.put("analysis", analysis);
-        response.put("executionTimeMs", executionTime);
-        
-        return response;
+            long executionTime = System.currentTimeMillis() - startTime;
+            logger.info("Simulation completed in {} ms", executionTime);
+            
+            /*
+             * I generate comprehensive analysis and interpretations
+             * to provide meaningful insights instead of placeholders
+             */
+            Map<String, Object> analysis = analysisService.generateCompleteAnalysis(results, algorithmName);
+            
+            /*
+             * I return both raw results and analysis so the frontend
+             * can display accurate interpretations
+             */
+            Map<String, Object> response = new HashMap<>();
+            response.put("simulationResults", results);
+            response.put("analysis", analysis);
+            response.put("executionTimeMs", executionTime);
+            
+            return response;
+        } finally {
+            algorithm.reset(); /* I clean up after use to free resources */
+        }
+    }
+    
+    /*
+     * I extract algorithm selection logic to avoid duplication.
+     * This helper method selects the appropriate algorithm based on the request.
+     */
+    private ISchedulingAlgorithm selectAlgorithm(SimulationRequest request) {
+        if ("EPSO".equalsIgnoreCase(request.getOptimizationAlgorithm())) {
+            logger.debug("Using EPSO algorithm");
+            return epso;
+        } else {
+            logger.debug("Using EACO algorithm");
+            return eaco;
+        }
     }
 
     /**
@@ -135,8 +147,11 @@ public class SimulationController {
         }
         
 
-        // I use ternary operator for concise algorithm selection
-        ISchedulingAlgorithm algorithm = "EPSO".equalsIgnoreCase(request.getOptimizationAlgorithm()) ? epso : eaco;
+        /*
+         * I select and reset the algorithm to ensure clean state
+         */
+        ISchedulingAlgorithm algorithm = selectAlgorithm(request);
+        algorithm.reset();
         EnhancedSimulationManager manager = new EnhancedSimulationManager(algorithm, request);
         
         // I check if MATLAB is still warming up so that clients can retry later
@@ -151,7 +166,7 @@ public class SimulationController {
         try {
             SimulationResults raw = manager.run();
             
-            /**
+            /*
              * I add metadata before passing to MATLAB to avoid null errors
              */
             raw.setRunId(java.util.UUID.randomUUID().toString());
@@ -161,13 +176,15 @@ public class SimulationController {
                 "custom-" + request.getWorkloadPath().hashCode() : "synthetic");
             
             String algorithmName = request.getOptimizationAlgorithm() != null ? request.getOptimizationAlgorithm() : "CloudSim";
-            // I process results through MATLAB to generate visualization plots
+            /* I process results through MATLAB to generate visualization plots */
             ProcessedResults out = matlabService.processResults(raw, algorithmName);
             return ResponseEntity.ok(out);
         } catch (Exception e) {
             logger.error("Error during MATLAB processing", e);
-            // I rethrow so that Spring's exception handler can format the error response
+            /* I rethrow so that Spring's exception handler can format the error response */
             throw e;
+        } finally {
+            algorithm.reset(); /* I clean up algorithm state after use */
         }
     }
     
@@ -192,8 +209,11 @@ public class SimulationController {
                     ));
         }
         
-        // I run the simulation synchronously first to get results
-        ISchedulingAlgorithm algorithm = "EPSO".equalsIgnoreCase(request.getOptimizationAlgorithm()) ? epso : eaco;
+        /*
+         * I run the simulation synchronously first to get results
+         */
+        ISchedulingAlgorithm algorithm = selectAlgorithm(request);
+        algorithm.reset();
         EnhancedSimulationManager manager = new EnhancedSimulationManager(algorithm, request);
         
         long startTime = System.currentTimeMillis();

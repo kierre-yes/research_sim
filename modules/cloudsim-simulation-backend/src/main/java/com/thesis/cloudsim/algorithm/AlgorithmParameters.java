@@ -3,12 +3,16 @@ package com.thesis.cloudsim.algorithm;
 import java.util.HashMap;
 import java.util.Map;
 
-// Configuration parameters for scheduling algorithms
+/*
+ * define config params
+ */
 public class AlgorithmParameters {
     
     private final Map<String, Object> parameters;
     
-    // Common parameters
+    /*
+     * params
+     */
     public static final String MAX_ITERATIONS = "maxIterations";
     public static final String POPULATION_SIZE = "populationSize";
     public static final String MAKESPAN_WEIGHT = "makespanWeight";

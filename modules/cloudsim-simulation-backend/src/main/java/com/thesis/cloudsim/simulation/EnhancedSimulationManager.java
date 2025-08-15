@@ -14,6 +14,8 @@ import org.cloudbus.cloudsim.UtilizationModelFull;
 import org.cloudbus.cloudsim.core.CloudSim;
 import org.cloudbus.cloudsim.Datacenter;
 import org.cloudbus.cloudsim.Vm;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -22,9 +24,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.Random;
 
-// Manages CloudSim simulation lifecycle
+/*
+ * I manage the CloudSim simulation lifecycle
+ */
 public class EnhancedSimulationManager {
-
+    
+    private static final Logger logger = LoggerFactory.getLogger(EnhancedSimulationManager.class);
     private static final Object SIMULATION_LOCK = new Object();
     private final ISchedulingAlgorithm algorithm;
     private final SimulationRequest request;
@@ -34,48 +39,86 @@ public class EnhancedSimulationManager {
         this.request = request;
     }
 
-    // Runs the simulation and returns metrics
+    /*
+     * I run the main simulation and return metrics. I've refactored this method
+     * to extract complex initialization and collection logic into separate methods
+     * for better readability and maintainability.
+     */
     public SimulationResults run() throws IOException {
         synchronized (SIMULATION_LOCK) {
-        // Initialize CloudSim
+            resetPreviousSimulation();
+            initializeCloudSim();
+            
+            CustomSchedulingBroker broker = createBroker();
+            int brokerId = broker.getId();
+            
+            Datacenter datacenter = setupDatacenter();
+            List<Vm> vmList = createVirtualMachines(brokerId);
+            
+            logDebugInfo(datacenter, brokerId);
+            
+            List<Cloudlet> cloudlets = prepareWorkload(brokerId);
+            submitResources(broker, vmList, cloudlets);
+            
+            CloudSim.startSimulation();
+            
+            return collectResults(broker, vmList, datacenter, cloudlets);
+        }
+    }
+    
+    /*
+     * I reset the previous simulation state to ensure clean runs.
+     * This prevents state pollution between consecutive simulations.
+     */
+    private void resetPreviousSimulation() throws IOException {
+        try {
+            CloudSim.terminateSimulation();
+            Thread.sleep(200);
+        } catch (Exception ignored) {
+            /* I ignore exceptions here as they indicate first run */
+        }
+        
+        System.gc();
+        try {
+            Thread.sleep(100);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IOException("Interrupted while resetting simulation", e);
+        }
+    }
+    
+    /*
+     * I initialize CloudSim with the required parameters.
+     */
+    private void initializeCloudSim() throws IOException {
         int num_user = 1;
         java.util.Calendar calendar = java.util.Calendar.getInstance();
         boolean trace_flag = false;
         
         try {
-            // Reset CloudSim state between runs
-            try {
-                CloudSim.terminateSimulation();
-                Thread.sleep(200);
-            } catch (Exception ignored) {
-                // First run
-            }
-            
-            // Clean up previous simulation
-            System.gc();
-            Thread.sleep(100);
-            
             CloudSim.init(num_user, calendar, trace_flag);
         } catch (Exception e) {
             throw new IOException("Failed to initialize CloudSim", e);
         }
-
-        // Create broker
-        CustomSchedulingBroker broker = null;
+    }
+    
+    /*
+     * I create the broker with the appropriate algorithm and parameters.
+     */
+    private CustomSchedulingBroker createBroker() throws IOException {
         try {
-            // Build algorithm parameters via helper to keep logic centralized
             AlgorithmParameters params = buildAlgorithmParameters(request);
-
-            // Get algorithm type
             String algorithmType = request.getOptimizationAlgorithm();
-            broker = new CustomSchedulingBroker("Broker", algorithmType, params);
+            return new CustomSchedulingBroker("Broker", algorithmType, params);
         } catch (Exception e) {
             throw new IOException("Failed to create broker", e);
         }
-        
-        int brokerId = broker.getId();
-        
-        // Create datacenter
+    }
+    
+    /*
+     * I setup the datacenter with the user's configuration from the frontend.
+     */
+    private Datacenter setupDatacenter() throws IOException {
         DataCenterConfigurator configurator = new DataCenterConfigurator(
                 request.getNumHosts(),
                 request.getNumPesPerHost(),
@@ -89,75 +132,105 @@ public class EnhancedSimulationManager {
                 request.getVmRam(),
                 request.getVmBw(),
                 request.getVmSize());
-
-        // Generate unique datacenter name
+        
         String datacenterName = "DC_" + System.currentTimeMillis();
-        Datacenter datacenter = configurator.configureDatacenter(datacenterName);
+        return configurator.configureDatacenter(datacenterName);
+    }
+    
+    /*
+     * I create virtual machines based on user's VM configuration.
+     */
+    private List<Vm> createVirtualMachines(int brokerId) {
+        DataCenterConfigurator configurator = new DataCenterConfigurator(
+                request.getNumHosts(),
+                request.getNumPesPerHost(),
+                request.getPeMips(),
+                request.getRamPerHost(),
+                request.getBwPerHost(),
+                request.getStoragePerHost(),
+                request.getNumVMs(),
+                request.getVmMips(),
+                request.getVmPes(),
+                request.getVmRam(),
+                request.getVmBw(),
+                request.getVmSize());
         
-        // Create VMs
-        List<Vm> vmList = configurator.createVms(brokerId);
-        
-        // Debug output
-        System.out.println("[DEBUG] Datacenter created with ID: " + datacenter.getId());
-        System.out.println("[DEBUG] Broker created with ID: " + brokerId);
-
-        // Load workload
+        return configurator.createVms(brokerId);
+    }
+    
+    /*
+     * I log debug information about the created resources.
+     */
+    private void logDebugInfo(Datacenter datacenter, int brokerId) {
+        logger.debug("Datacenter created with ID: {}", datacenter.getId());
+        logger.debug("Broker created with ID: {}", brokerId);
+    }
+    
+    /*
+     * I prepare the workload by loading cloudlets and setting their user ID.
+     */
+    private List<Cloudlet> prepareWorkload(int brokerId) throws IOException {
         List<Cloudlet> cloudlets = loadCloudlets();
-        System.out.println("[DEBUG] Created " + cloudlets.size() + " cloudlets");
+        logger.debug("Created {} cloudlets", cloudlets.size());
         
-        // Set broker ID for cloudlets
         for (Cloudlet cloudlet : cloudlets) {
             cloudlet.setUserId(brokerId);
         }
         
-        // Submit resources to broker
+        return cloudlets;
+    }
+    
+    /*
+     * I submit resources to the broker and handle staged submission if needed.
+     */
+    private void submitResources(CustomSchedulingBroker broker, List<Vm> vmList, List<Cloudlet> cloudlets) {
         broker.submitGuestList(vmList);
         
-        // Check if we should use arrival times for staged submission
         if (request.isUseArrivalTimes() && request.getArrivalTimes() != null && !request.getArrivalTimes().isEmpty()) {
-            // Staged submission based on arrival times
-            System.out.println("[INFO] Using staged submission with arrival times");
+            logger.info("Using staged submission with arrival times");
             submitCloudletsWithTiming(broker, cloudlets, request.getArrivalTimes());
         } else {
-            // Batch submission (default behavior)
-            System.out.println("[INFO] Using batch submission (all cloudlets at t=0)");
+            logger.info("Using batch submission (all cloudlets at t=0)");
             broker.submitCloudletList(cloudlets);
         }
-
-        // Start simulation
-        
-        CloudSim.startSimulation();
-
-        // Get VM-to-host mappings from broker
+    }
+    
+    /*
+     * I collect simulation results and calculate metrics to send back to the frontend.
+     */
+    private SimulationResults collectResults(CustomSchedulingBroker broker, List<Vm> vmList, 
+                                            Datacenter datacenter, List<Cloudlet> cloudlets) {
         Map<Integer, Integer> vmToHostMap = broker.getVmToHostMapping();
-        System.out.println("[DEBUG] Retrieved VM-to-host mappings from broker: " + vmToHostMap.size() + " entries");
+        logger.debug("Retrieved VM-to-host mappings from broker: {} entries", vmToHostMap.size());
         for (Map.Entry<Integer, Integer> entry : vmToHostMap.entrySet()) {
-            System.out.println("[DEBUG] VM " + entry.getKey() + " is on Host " + entry.getValue());
+            logger.debug("VM {} is on Host {}", entry.getKey(), entry.getValue());
         }
-
-        // Get completed cloudlets
+        
         List<Cloudlet> finished = broker.getCloudletReceivedList();
         
-        // Check if all cloudlets completed
         if (finished.size() != cloudlets.size()) {
-            System.err.println("[WARNING] Not all cloudlets finished: " + 
-                             finished.size() + " of " + cloudlets.size());
+            logger.warn("Not all cloudlets finished: {} of {}", finished.size(), cloudlets.size());
         }
         
-        MetricsCalculator calculator = new MetricsCalculator(vmList, datacenter, finished, request.getOptimizationAlgorithm(), vmToHostMap);
+        MetricsCalculator calculator = new MetricsCalculator(vmList, datacenter, finished, 
+                                                            request.getOptimizationAlgorithm(), vmToHostMap);
         
-        // Get fitness value from algorithm
-        double fitness = 0.0;
+        double fitness = extractFitnessValue(broker);
+        return calculator.buildResults(fitness);
+    }
+    
+    /*
+     * I extract the fitness value from the algorithm used by the broker.
+     */
+    private double extractFitnessValue(CustomSchedulingBroker broker) {
         ISchedulingAlgorithm brokerAlgorithm = broker.getLastUsedAlgorithm();
         if (brokerAlgorithm != null && brokerAlgorithm.getMetrics() != null) {
             Double fitnessValue = brokerAlgorithm.getMetrics().get("fitness");
             if (fitnessValue != null) {
-                fitness = fitnessValue;
+                return fitnessValue;
             }
         }
-        
-        return calculator.buildResults(fitness);
-        }
+        return 0.0;
     }
 
     // Load cloudlets from file or generate synthetic workload
@@ -170,7 +243,7 @@ public class EnhancedSimulationManager {
                 
                 // Store arrival times if present (for future staged submission)
                 if (workloadData.hasArrivalTimes()) {
-                    System.out.println("[DEBUG] Workload has arrival times - will use staged submission");
+                    logger.debug("Workload has arrival times - will use staged submission");
                     // Store in request for later use
                     request.setArrivalTimes(workloadData.arrivalTimes);
                 }
@@ -178,7 +251,7 @@ public class EnhancedSimulationManager {
                 return workloadData.cloudlets;
             } catch (Exception e) {
                 // Fallback to legacy loader if enhanced fails
-                System.out.println("[DEBUG] enhanced fail, fallback to legacy loader: " + e.getMessage());
+                logger.debug("Enhanced loader failed, fallback to legacy loader: {}", e.getMessage());
                 return new DatasetUtils().loadWorkload(request.getWorkloadPath(), request.getNumCloudlets());
             }
         }
@@ -224,7 +297,7 @@ public class EnhancedSimulationManager {
      * Submit cloudlets with timing - groups by time windows and schedules submission
      */
     private void submitCloudletsWithTiming(CustomSchedulingBroker broker, List<Cloudlet> cloudlets, List<Double> arrivalTimes) {
-        System.out.println("[DEBUG] Submitting cloudlets with arrival times");
+        logger.debug("Submitting cloudlets with arrival times");
         
         // Group cloudlets by arrival time windows (1 second buckets)
         Map<Integer, List<Cloudlet>> timeWindows = new java.util.TreeMap<>();
@@ -240,10 +313,11 @@ public class EnhancedSimulationManager {
                       .add(cloudlets.get(i));
         }
         
-        System.out.println("[DEBUG] Grouped cloudlets into " + timeWindows.size() + " time windows");
+        logger.debug("Grouped cloudlets into {} time windows", timeWindows.size());
         if (!timeWindows.isEmpty()) {
-            System.out.println("[DEBUG] Time windows range from " + timeWindows.keySet().iterator().next() + 
-                               "s to " + ((java.util.TreeMap<Integer, List<Cloudlet>>)timeWindows).lastKey() + "s");
+            logger.debug("Time windows range from {}s to {}s", 
+                        timeWindows.keySet().iterator().next(),
+                        ((java.util.TreeMap<Integer, List<Cloudlet>>)timeWindows).lastKey());
         }
         
         // Schedule batch submissions based on arrival times
@@ -254,15 +328,15 @@ public class EnhancedSimulationManager {
             if (submitTime <= 0) {
                 // Submit immediately for time 0
                 broker.submitCloudletList(batch);
-                System.out.println("[DEBUG] Submitted " + batch.size() + " cloudlets immediately (t=0)");
+                logger.debug("Submitted {} cloudlets immediately (t=0)", batch.size());
             } else {
                 // Schedule for later submission
                 broker.queueBatchForSubmission(batch, submitTime);
-                System.out.println("[DEBUG] Scheduled " + batch.size() + " cloudlets for submission at t=" + submitTime + "s");
+                logger.debug("Scheduled {} cloudlets for submission at t={}s", batch.size(), submitTime);
             }
         }
         
-        System.out.println("[DEBUG] Staged submission configured with " + timeWindows.size() + " time windows");
+        logger.debug("Staged submission configured with {} time windows", timeWindows.size());
     }
 
     // Helper to construct algorithm parameters without changing behavior

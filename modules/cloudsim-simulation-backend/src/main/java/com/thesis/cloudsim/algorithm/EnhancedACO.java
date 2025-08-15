@@ -44,8 +44,24 @@ public class EnhancedACO implements ISchedulingAlgorithm {
     
     public EnhancedACO() {
         this.metrics = new HashMap<>();
-        // I use ThreadLocalRandom so that concurrent simulations have independent random sequences
-        this.random = ThreadLocalRandom.current();
+        /*
+         * apply the new random instance
+         */
+        this.random = new Random();
+        this.ants = new ArrayList<>();
+        this.bestFitness = Double.MAX_VALUE;
+        this.currentIteration = 0;
+        this.previousBestFitness = Double.MAX_VALUE;
+        this.stagnationCounter = 0;
+        this.previousPheromoneConvergence = Double.MAX_VALUE;
+    }
+    
+    /*
+     * I provide a constructor with seed for reproducible results when needed
+     */
+    public EnhancedACO(long seed) {
+        this.metrics = new HashMap<>();
+        this.random = new Random(seed);
         this.ants = new ArrayList<>();
         this.bestFitness = Double.MAX_VALUE;
         this.currentIteration = 0;
