@@ -1,5 +1,7 @@
 <a href="#">
+
   <img width="1024" alt="Cloud Load Balancer Simulator preview" src="https://github.com/user-attachments/assets/f719a4d1-2d0b-4080-8203-032f951600d9" />
+  
 </a>
 
 <p align="center">
