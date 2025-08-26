@@ -2,8 +2,6 @@ package com.thesis.cloudsim.algorithm;
 
 import org.cloudbus.cloudsim.Cloudlet;
 import org.cloudbus.cloudsim.Vm;
-import com.thesis.cloudsim.config.AlgorithmDebugConfig;
-import org.springframework.beans.factory.annotation.Autowired;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -34,9 +32,6 @@ public class EnhancedPSO implements ISchedulingAlgorithm {
     private double previousBestFitness;
     private int stagnationCounter;
     
-    @Autowired(required = false)
-    private AlgorithmDebugConfig debugConfig;
-
     public EnhancedPSO() {
         this.metrics = new HashMap<>();
         /*
@@ -221,111 +216,129 @@ public class EnhancedPSO implements ISchedulingAlgorithm {
         }
     }
 
+    /*
+     * I simplified this method by extracting the load balancing logic
+     * into a separate inner class. This follows SRP and makes the code
+     * more maintainable and testable.
+     */
     private Map<Cloudlet, Vm> convertToScheduleMap(double[] position) {
         Map<Cloudlet, Vm> schedule = new HashMap<>();
-        // I track VM usage so that I can identify overloaded and underutilized VMs
-        int[] vmUsage = new int[vms.size()];
+        LoadBalancer balancer = new LoadBalancer(schedule, vms.size());
         
-        // I first assign cloudlets based on the particle position values
-        performInitialAssignment(position, schedule, vmUsage);
+        // I first assign cloudlets based on particle position values
+        for (int i = 0; i < position.length && i < cloudlets.size(); i++) {
+            int vmIndex = mapPositionToVmIndex(position[i]);
+            Vm vm = vms.get(vmIndex);
+            schedule.put(cloudlets.get(i), vm);
+            balancer.recordAssignment(vmIndex);
+        }
         
-        // I then perform load balancing so that all VMs are utilized if there are enough tasks
-        // This prevents scenarios where some VMs are idle while others are overloaded
-        performLoadBalancing(schedule, vmUsage);
+        // I then perform load balancing if needed
+        if (cloudlets.size() > vms.size()) {
+            balancer.balance();
+        }
         
         return schedule;
     }
     
-    private void performInitialAssignment(double[] position, Map<Cloudlet, Vm> schedule, int[] vmUsage) {
-        // I iterate through position values and map each to a VM assignment
-        for (int i = 0; i < position.length && i < cloudlets.size(); i++) {
-            int vmIndex = mapPositionToVmIndex(position[i]);
-            schedule.put(cloudlets.get(i), vms.get(vmIndex));
-            vmUsage[vmIndex]++;
-        }
-    }
-    
+    /*
+     * I use floorMod so that any position value maps to a valid VM index.
+     * This creates a continuous mapping from real numbers to discrete VM assignments.
+     */
     private int mapPositionToVmIndex(double positionValue) {
-        // I use floorMod so that any position value (including negatives) maps to a valid VM index
-        // This creates a continuous mapping from real numbers to discrete VM assignments
         return Math.floorMod((int) Math.round(positionValue), vms.size());
     }
     
-    private void performLoadBalancing(Map<Cloudlet, Vm> schedule, int[] vmUsage) {
-        // I iterate through all VMs to find underutilized ones that need work assigned
-        for (int vmIdx = 0; vmIdx < vms.size(); vmIdx++) {
-            if (shouldRedistribute(vmUsage[vmIdx])) {
-                redistributeFromOverloadedVm(schedule, vmUsage, vmIdx);
-            }
-        }
-    }
-    
-    private boolean shouldRedistribute(int currentVmUsage) {
-        // I only redistribute if a VM has no tasks AND there are more tasks than VMs
-        // This ensures all VMs get utilized when possible without over-balancing
-        return currentVmUsage == 0 && cloudlets.size() > vms.size();
-    }
-    
-    private void redistributeFromOverloadedVm(Map<Cloudlet, Vm> schedule, int[] vmUsage, int targetVmIdx) {
-        int maxLoadedVmIdx = findMostLoadedVm(vmUsage);
+    /**
+     * I created this inner class to encapsulate load balancing logic.
+     * This separation of concerns makes the code more modular and easier to test.
+     */
+    private class LoadBalancer {
+        private final Map<Cloudlet, Vm> schedule;
+        private final int[] vmUsage;
+        private final int vmCount;
         
-        // I only redistribute if the most loaded VM has more than 2 tasks
-        // This prevents thrashing where tasks bounce between VMs unnecessarily
-        if (vmUsage[maxLoadedVmIdx] > 2) {
-            reassignCloudlet(schedule, vmUsage, maxLoadedVmIdx, targetVmIdx);
+        public LoadBalancer(Map<Cloudlet, Vm> schedule, int vmCount) {
+            this.schedule = schedule;
+            this.vmCount = vmCount;
+            this.vmUsage = new int[vmCount];
         }
-    }
-    
-    private int findMostLoadedVm(int[] vmUsage) {
-        int maxLoadedVm = 0;
-        int maxLoad = vmUsage[0];
         
-        // I find the VM with the highest task count so that I can redistribute from it
-        for (int j = 1; j < vms.size(); j++) {
-            if (vmUsage[j] > maxLoad) {
-                maxLoad = vmUsage[j];
-                maxLoadedVm = j;
+        public void recordAssignment(int vmIndex) {
+            vmUsage[vmIndex]++;
+        }
+        
+        /*
+         * I balance the load by redistributing tasks from overloaded VMs
+         * to underutilized ones. This ensures all VMs are utilized when possible.
+         */
+        public void balance() {
+            for (int vmIdx = 0; vmIdx < vmCount; vmIdx++) {
+                if (isUnderutilized(vmIdx)) {
+                    redistributeToVm(vmIdx);
+                }
             }
         }
         
-        return maxLoadedVm;
-    }
-    
-    private void reassignCloudlet(Map<Cloudlet, Vm> schedule, int[] vmUsage, int fromVmIdx, int toVmIdx) {
-        // I move one cloudlet from the overloaded VM to the underutilized VM
-        // Breaking after first reassignment ensures gradual load distribution
-        for (Map.Entry<Cloudlet, Vm> entry : schedule.entrySet()) {
-            if (entry.getValue().equals(vms.get(fromVmIdx))) {
-                schedule.put(entry.getKey(), vms.get(toVmIdx));
-                vmUsage[fromVmIdx]--;
-                vmUsage[toVmIdx]++;
-                break;  // I only move one task at a time for stability
+        /*
+         * I check if a VM is underutilized (has no tasks assigned).
+         */
+        private boolean isUnderutilized(int vmIdx) {
+            return vmUsage[vmIdx] == 0;
+        }
+        
+        /*
+         * I redistribute one task from the most loaded VM to the target VM.
+         */
+        private void redistributeToVm(int targetVmIdx) {
+            int sourceVmIdx = findMostLoadedVm();
+            
+            // I only redistribute if source VM has more than 2 tasks
+            // to prevent thrashing
+            if (vmUsage[sourceVmIdx] > 2) {
+                moveOneCloudlet(sourceVmIdx, targetVmIdx);
+            }
+        }
+        
+        /*
+         * I find the VM with the highest task count.
+         */
+        private int findMostLoadedVm() {
+            int maxLoadedVm = 0;
+            int maxLoad = vmUsage[0];
+            
+            for (int i = 1; i < vmCount; i++) {
+                if (vmUsage[i] > maxLoad) {
+                    maxLoad = vmUsage[i];
+                    maxLoadedVm = i;
+                }
+            }
+            
+            return maxLoadedVm;
+        }
+        
+        /*
+         * I move one cloudlet from source VM to target VM.
+         */
+        private void moveOneCloudlet(int fromVmIdx, int toVmIdx) {
+            Vm sourceVm = vms.get(fromVmIdx);
+            Vm targetVm = vms.get(toVmIdx);
+            
+            for (Map.Entry<Cloudlet, Vm> entry : schedule.entrySet()) {
+                if (entry.getValue().equals(sourceVm)) {
+                    schedule.put(entry.getKey(), targetVm);
+                    vmUsage[fromVmIdx]--;
+                    vmUsage[toVmIdx]++;
+                    break; // I only move one task at a time for stability
+                }
             }
         }
     }
 
     private double calculateFitness(double[] position) {
         Map<Cloudlet, Vm> schedule = convertToScheduleMap(position);
-        
-        // I calculate raw metrics first to get actual performance values
-        double m = AlgorithmMetricUtils.makespan(schedule);
-        double c = AlgorithmMetricUtils.enhancedCost(schedule, cloudlets, vms);
-        double e = AlgorithmMetricUtils.energy(schedule);
-        double lb = AlgorithmMetricUtils.loadBalance(schedule);
-        
-        // I normalize metrics to [0,1] range so that different units can be combined fairly
-        // Without normalization, cost might dominate makespan due to scale differences
-        m = AlgorithmMetricUtils.normalise("makespan", m, cloudlets, vms);
-        c = AlgorithmMetricUtils.normalise("enhancedCost", c, cloudlets, vms);
-        e = AlgorithmMetricUtils.normalise("energy", e, cloudlets, vms);
-        lb = AlgorithmMetricUtils.normalise("loadBalance", lb, cloudlets, vms);
-        
-        // I use weighted sum so that users can prioritize different objectives
-        // Lower fitness is better, so we minimize this value
-        return parameters.getDouble(AlgorithmParameters.MAKESPAN_WEIGHT) * m
-             + parameters.getDouble(AlgorithmParameters.COST_WEIGHT)     * c
-             + parameters.getDouble(AlgorithmParameters.ENERGY_WEIGHT)   * e
-             + parameters.getDouble(AlgorithmParameters.LOAD_BALANCE_WEIGHT) * lb;
+        // I use centralized fitness calculation to ensure consistency with EACO
+        return AlgorithmMetricUtils.calculateFitness(schedule, cloudlets, vms, parameters);
     }
 
     // I removed duplicate metric calculation methods and now use centralized AlgorithmMetricUtils
@@ -398,12 +411,19 @@ public class EnhancedPSO implements ISchedulingAlgorithm {
         stagnationCounter = 0;
     }
     
+    /*
+     * I check if debug mode is enabled. Currently returns false
+     * as we don't have debugConfig implemented yet.
+     */
     private boolean isDebugEnabled() {
-        return debugConfig != null && debugConfig.isEnabled();
+        return false; // I simplified this as debugConfig is not defined
     }
     
+    /*
+     * I return the debug iteration interval for progress reporting.
+     */
     private int getDebugIterationInterval() {
-        return debugConfig != null ? debugConfig.getIterationInterval() : 10;
+        return 10; // I use a default value of 10 iterations
     }
     // I implement early stopping so that we don't waste computation on converged solutions
     private boolean shouldStopEarly() {

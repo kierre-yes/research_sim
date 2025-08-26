@@ -1,5 +1,7 @@
 package com.thesis.cloudsim.service;
 
+import com.thesis.cloudsim.dto.PlotMetadata;
+import com.thesis.cloudsim.dto.ProcessedResults;
 import com.thesis.cloudsim.dto.TTestResults;
 import com.thesis.cloudsim.metrics.SimulationResults;
 import org.slf4j.Logger;
@@ -8,39 +10,33 @@ import org.springframework.stereotype.Service;
 
 import java.util.*;
 
-/**
- * I created this service to generate detailed analysis and interpretations of simulation results.
- * This provides contextual, data-driven explanations instead of generic placeholders
- * that the frontend currently displays. The service centralizes all interpretation logic
- * so that accurate insights are generated based on actual simulation data.
- */
 @Service
 public class AnalysisInterpretationService {
     
     private static final Logger logger = LoggerFactory.getLogger(AnalysisInterpretationService.class);
-    
-    /**
-     * I generate comprehensive analysis for simulation results including overall performance,
-     * metric-specific interpretations, efficiency analysis, recommendations, and plot interpretations.
-     * This ensures the frontend receives meaningful data instead of placeholders.
-     */
-    public Map<String, Object> generateCompleteAnalysis(SimulationResults results, String algorithmName) {
+    private final PlotInterpretationService plotInterpretationService;
+
+    public AnalysisInterpretationService(PlotInterpretationService plotInterpretationService) {
+        this.plotInterpretationService = plotInterpretationService;
+    }
+
+    public Map<String, Object> generateCompleteAnalysis(ProcessedResults processedResults, String algorithmName) {
         Map<String, Object> analysis = new HashMap<>();
+        SimulationResults results = processedResults.getRawResults();
         
         analysis.put("overallPerformance", generateOverallAnalysis(results, algorithmName));
         analysis.put("metricInterpretations", generateMetricInterpretations(results));
         analysis.put("efficiencyAnalysis", generateEfficiencyAnalysis(results));
         analysis.put("recommendations", generateRecommendations(results, algorithmName));
-        analysis.put("plotInterpretations", generatePlotInterpretations(results));
+        
+        // Only include plot interpretations if we have actual plots from MATLAB
+        if (processedResults.getPlotMetadata() != null && !processedResults.getPlotMetadata().isEmpty()) {
+            analysis.put("plotInterpretations", processedResults.getPlotMetadata());
+        }
         
         return analysis;
     }
     
-    /**
-     * I generate statistical test interpretation to provide meaningful explanations
-     * of t-test results instead of just raw numbers. This helps users understand
-     * what the statistical significance actually means for their use case.
-     */
     public Map<String, Object> generateStatisticalInterpretation(TTestResults tTestResults) {
         Map<String, Object> interpretation = new HashMap<>();
         
@@ -65,62 +61,6 @@ public class AnalysisInterpretationService {
         return interpretation;
     }
     
-    /**
-     * I generate interpretations for MATLAB plots based on actual metric values.
-     * Each plot type gets a specific interpretation that explains what the visualization
-     * shows and what it means for system performance.
-     */
-    public Map<String, String> generatePlotInterpretations(SimulationResults results) {
-        Map<String, String> plotInterpretations = new HashMap<>();
-        
-        SimulationResults.Summary summary = results.getSummary();
-        
-        plotInterpretations.put("metrics", String.format(
-            "The metrics comparison shows overall performance characteristics. " +
-            "Makespan of %.2f seconds indicates %s task completion time. " +
-            "Resource utilization at %.1f%% suggests %s efficiency.",
-            summary.getMakespan(),
-            categorizeMakespan(summary.getMakespan()),
-            summary.getResourceUtilization(),
-            categorizeUtilization(summary.getResourceUtilization())
-        ));
-        
-        plotInterpretations.put("vm_utilization", String.format(
-            "VM utilization patterns reveal resource distribution efficiency. " +
-            "Average utilization of %.1f%% with load balance index of %.3f indicates %s distribution.",
-            summary.getResourceUtilization(),
-            summary.getLoadBalance(),
-            categorizeLoadBalance(summary.getLoadBalance())
-        ));
-        
-        plotInterpretations.put("energy", String.format(
-            "Energy consumption totals %.2f Wh. This represents %s energy efficiency " +
-            "considering the workload size and execution time.",
-            summary.getEnergyConsumption(),
-            categorizeEnergyEfficiency(summary.getEnergyConsumption(), summary.getMakespan())
-        ));
-        
-        plotInterpretations.put("timeline", String.format(
-            "The execution timeline shows task scheduling patterns over %.2f seconds. " +
-            "Response time averaging %.2f seconds indicates %s user experience.",
-            summary.getMakespan(),
-            summary.getResponseTime(),
-            categorizeResponseTime(summary.getResponseTime())
-        ));
-        
-        plotInterpretations.put("radar", 
-            "The radar chart provides a multi-dimensional view of algorithm performance. " +
-            "Larger area coverage indicates better overall performance across all metrics. " +
-            "Shape symmetry reveals balanced optimization across different objectives."
-        );
-        
-        return plotInterpretations;
-    }
-    
-    /**
-     * I analyze overall performance and generate a summary with grade, strengths, and weaknesses.
-     * The performance score is calculated using weighted metrics to provide a holistic view.
-     */
     private Map<String, String> generateOverallAnalysis(SimulationResults results, String algorithmName) {
         Map<String, String> analysis = new HashMap<>();
         SimulationResults.Summary summary = results.getSummary();
@@ -142,10 +82,6 @@ public class AnalysisInterpretationService {
         return analysis;
     }
     
-    /**
-     * I generate specific interpretations for each metric, explaining what the values mean
-     * in practical terms and providing context for decision-making.
-     */
     private Map<String, String> generateMetricInterpretations(SimulationResults results) {
         Map<String, String> interpretations = new HashMap<>();
         SimulationResults.Summary summary = results.getSummary();
@@ -192,10 +128,6 @@ public class AnalysisInterpretationService {
         return interpretations;
     }
     
-    /**
-     * I calculate and analyze efficiency metrics including throughput, energy per task,
-     * and overall efficiency score to provide a complete efficiency profile.
-     */
     private Map<String, String> generateEfficiencyAnalysis(SimulationResults results) {
         Map<String, String> analysis = new HashMap<>();
         SimulationResults.Summary summary = results.getSummary();
@@ -222,11 +154,6 @@ public class AnalysisInterpretationService {
         return analysis;
     }
     
-    /**
-     * I generate actionable recommendations based on the simulation results.
-     * These recommendations are specific to the observed performance patterns
-     * and the algorithm being used.
-     */
     private List<String> generateRecommendations(SimulationResults results, String algorithmName) {
         List<String> recommendations = new ArrayList<>();
         SimulationResults.Summary summary = results.getSummary();
@@ -263,10 +190,6 @@ public class AnalysisInterpretationService {
         return recommendations;
     }
     
-    /**
-     * I create a comprehensive statistical conclusion that summarizes the t-test results
-     * in plain language, making it accessible to users without statistical background.
-     */
     private String generateStatisticalConclusion(TTestResults results) {
         int significantMetrics = results.getSignificantDifferences();
         int totalMetrics = results.getMetricTests().size();
@@ -289,10 +212,6 @@ public class AnalysisInterpretationService {
         }
     }
     
-    /**
-     * I interpret individual metric test results, explaining the statistical significance,
-     * effect size, and practical implications of the differences observed.
-     */
     private String interpretMetricTest(String metricName, TTestResults.MetricTest test) {
         if (!test.isSignificant()) {
             return String.format(
@@ -316,10 +235,6 @@ public class AnalysisInterpretationService {
         );
     }
     
-    /**
-     * I generate an explanation of effect sizes across all metrics to help users
-     * understand the practical significance beyond statistical significance.
-     */
     private String generateEffectSizeExplanation(TTestResults results) {
         Map<String, Integer> effectCounts = new HashMap<>();
         effectCounts.put("Negligible", 0);
@@ -356,10 +271,6 @@ public class AnalysisInterpretationService {
         return explanation.toString();
     }
     
-    /**
-     * I categorize metrics into qualitative descriptions to make the data more accessible.
-     * These helper methods convert numerical values into meaningful categories.
-     */
     private String categorizeMakespan(double makespan) {
         if (makespan < 5) return "excellent";
         if (makespan < 15) return "good";
@@ -397,10 +308,6 @@ public class AnalysisInterpretationService {
         return "poor";
     }
     
-    /**
-     * I provide specific recommendations based on utilization levels to help
-     * optimize resource usage and costs.
-     */
     private String getUtilizationRecommendation(double utilization) {
         if (utilization < 40) {
             return "Consider consolidating workloads to fewer resources.";
@@ -426,10 +333,6 @@ public class AnalysisInterpretationService {
         return "Uneven distribution may lead to bottlenecks and inefficiency.";
     }
     
-    /**
-     * I calculate a composite performance score using weighted metrics.
-     * This provides a single score that represents overall system performance.
-     */
     private double calculatePerformanceScore(SimulationResults.Summary summary) {
         double makespanScore = Math.max(0, 1 - (summary.getMakespan() / 100));
         double utilizationScore = summary.getResourceUtilization() / 100;
@@ -453,10 +356,6 @@ public class AnalysisInterpretationService {
         return (throughputScore + utilizationScore + energyScore) / 3;
     }
     
-    /**
-     * I convert performance scores to letter grades for intuitive understanding.
-     * This familiar grading system makes it easy to assess performance at a glance.
-     */
     private String getPerformanceGrade(double score) {
         if (score >= 0.9) return "A+";
         if (score >= 0.85) return "A";
@@ -470,10 +369,6 @@ public class AnalysisInterpretationService {
         return "D";
     }
     
-    /**
-     * I identify system strengths based on metric thresholds.
-     * This helps users understand what aspects of their system are performing well.
-     */
     private String identifyStrengths(SimulationResults.Summary summary) {
         List<String> strengths = new ArrayList<>();
         
@@ -496,10 +391,6 @@ public class AnalysisInterpretationService {
         return strengths.isEmpty() ? "Performance within expected parameters" : String.join(", ", strengths);
     }
     
-    /**
-     * I identify system weaknesses that need attention.
-     * This helps prioritize optimization efforts.
-     */
     private String identifyWeaknesses(SimulationResults.Summary summary) {
         List<String> weaknesses = new ArrayList<>();
         

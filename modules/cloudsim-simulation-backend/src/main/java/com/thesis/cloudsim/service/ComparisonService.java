@@ -7,6 +7,7 @@ import com.thesis.cloudsim.dto.TTestResults;
 import com.thesis.cloudsim.algorithm.ISchedulingAlgorithm;
 import com.thesis.cloudsim.matlab.MatlabIntegrationService;
 import com.thesis.cloudsim.metrics.SimulationResults;
+import com.thesis.cloudsim.util.ConfigurationSnapshotUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -18,7 +19,6 @@ import java.util.stream.Collectors;
 import org.apache.commons.math3.distribution.TDistribution;
 import org.apache.commons.math3.stat.inference.TTest;
 import org.apache.commons.math3.stat.descriptive.DescriptiveStatistics;
-import org.springframework.beans.factory.annotation.Autowired;
 
 @Service
 public class ComparisonService {
@@ -414,41 +414,12 @@ public class ComparisonService {
     }
 
     private Map<String, Object> buildConfigSnapshot(SimulationRequest r) {
-        Map<String, Object> m = new HashMap<>();
-        m.put("optimizationAlgorithm", r.getOptimizationAlgorithm());
-        m.put("numHosts", r.getNumHosts());
-        m.put("numVMs", r.getNumVMs());
-        m.put("numPesPerHost", r.getNumPesPerHost());
-        m.put("peMips", r.getPeMips());
-        m.put("ramPerHost", r.getRamPerHost());
-        m.put("bwPerHost", r.getBwPerHost());
-        m.put("storagePerHost", r.getStoragePerHost());
-        m.put("vmMips", r.getVmMips());
-        m.put("vmPes", r.getVmPes());
-        m.put("vmRam", r.getVmRam());
-        m.put("vmBw", r.getVmBw());
-        m.put("vmSize", r.getVmSize());
-        m.put("vmScheduler", r.getVmScheduler());
-        m.put("numCloudlets", r.getNumCloudlets());
-        m.put("workloadType", r.getWorkloadType());
-        m.put("useDefaultWorkload", r.isUseDefaultWorkload());
-        m.put("useArrivalTimes", r.isUseArrivalTimes());
-        m.put("iterations", r.getIterations());
-        return m;
+        // Use centralized utility to avoid duplication
+        return ConfigurationSnapshotUtil.createDetailedSnapshot(r);
     }
 
     private String computeDatasetId(String path) {
-        if (path == null || path.isBlank()) return "RANDOM";
-        try {
-            java.security.MessageDigest md = java.security.MessageDigest.getInstance("SHA-256");
-            byte[] bytes = java.nio.file.Files.readAllBytes(java.nio.file.Paths.get(path));
-            byte[] hash = md.digest(bytes);
-            StringBuilder sb = new StringBuilder();
-            for (byte b : hash) sb.append(String.format("%02x", b));
-            return sb.toString();
-        } catch (Exception e) {
-            // Fallback to filename if hashing fails
-            return new java.io.File(path).getName();
-        }
+        // Delegate to utility class to avoid duplication
+        return ConfigurationSnapshotUtil.computeDatasetId(path);
     }
 }

@@ -339,38 +339,23 @@ public class EnhancedSimulationManager {
         logger.debug("Staged submission configured with {} time windows", timeWindows.size());
     }
 
-    // Helper to construct algorithm parameters without changing behavior
+    /*
+     * I refactored this to use AlgorithmFactory to eliminate code duplication.
+     * This follows DRY principle - algorithm parameters are now centralized
+     * in AlgorithmFactory where they belong, avoiding maintenance issues
+     * from having the same logic in multiple places.
+     */
     private AlgorithmParameters buildAlgorithmParameters(SimulationRequest request) {
-        AlgorithmParameters params = new AlgorithmParameters();
+        // I delegate to AlgorithmFactory for default parameters to avoid duplication
+        AlgorithmParameters params = com.thesis.cloudsim.algorithm.AlgorithmFactory
+            .createDefaultParameters(request.getOptimizationAlgorithm());
+        
+        // I override with user-specified weights for multi-objective optimization
         params.setParameter(AlgorithmParameters.MAKESPAN_WEIGHT, request.getMakespanWeight());
         params.setParameter(AlgorithmParameters.COST_WEIGHT, request.getCostWeight());
         params.setParameter(AlgorithmParameters.ENERGY_WEIGHT, request.getEnergyWeight());
         params.setParameter(AlgorithmParameters.LOAD_BALANCE_WEIGHT, request.getLoadBalanceWeight());
-
-        if ("EPSO".equalsIgnoreCase(request.getOptimizationAlgorithm())) {
-            params.setParameter(AlgorithmParameters.MAX_ITERATIONS, 150);
-            params.setParameter(AlgorithmParameters.POPULATION_SIZE, 40);
-            params.setParameter(AlgorithmParameters.INERTIA_WEIGHT, 0.9);
-            params.setParameter(AlgorithmParameters.INERTIA_WEIGHT_MAX, 0.9);
-            params.setParameter(AlgorithmParameters.INERTIA_WEIGHT_MIN, 0.4);
-            params.setParameter(AlgorithmParameters.COGNITIVE_COEFFICIENT, 2.0);
-            params.setParameter(AlgorithmParameters.SOCIAL_COEFFICIENT, 2.0);
-            params.setParameter(AlgorithmParameters.MAX_VELOCITY, 10.0);
-            params.setParameter(AlgorithmParameters.MIN_VELOCITY, -10.0);
-            params.setParameter(AlgorithmParameters.MAX_VELOCITY_INITIAL, 6.0);
-            params.setParameter(AlgorithmParameters.MAX_VELOCITY_FINAL, 1.0);
-        } else {
-            params.setParameter(AlgorithmParameters.MAX_ITERATIONS, 100);
-            params.setParameter(AlgorithmParameters.POPULATION_SIZE, 30);
-            params.setParameter(AlgorithmParameters.PHEROMONE_DECAY, 0.5);
-            params.setParameter(AlgorithmParameters.ALPHA, 1.0);
-            params.setParameter(AlgorithmParameters.BETA, 2.0);
-            params.setParameter(AlgorithmParameters.INITIAL_PHEROMONE, 0.1);
-            params.setParameter(AlgorithmParameters.MIN_PHEROMONE, 0.01);
-            params.setParameter(AlgorithmParameters.MAX_PHEROMONE, 1.0);
-            params.setParameter(AlgorithmParameters.EVAPORATION_MIN, 0.1);
-            params.setParameter(AlgorithmParameters.EVAPORATION_MAX, 0.9);
-        }
+        
         return params;
     }
 }

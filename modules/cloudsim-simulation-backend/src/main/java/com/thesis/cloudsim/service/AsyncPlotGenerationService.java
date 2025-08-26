@@ -24,7 +24,6 @@ public class AsyncPlotGenerationService {
     @Autowired(required = false)
     private MatlabIntegrationService matlabService;
     
-    // store plot generation status and results
     private final Map<String, PlotGenerationStatus> plotStatusMap = new ConcurrentHashMap<>();
     private final Map<String, ProcessedResults> plotResultsMap = new ConcurrentHashMap<>();
     
@@ -50,7 +49,6 @@ public class AsyncPlotGenerationService {
             this.progress = 0.0;
         }
         
-        // getters and setters
         public String getSimulationId() { return simulationId; }
         public PlotStatus getStatus() { return status; }
         public void setStatus(PlotStatus status) { this.status = status; }
@@ -70,28 +68,20 @@ public class AsyncPlotGenerationService {
         }
     }
     
-    /**
-     * Submit simulation results for async plot generation
-     * @return simulationId for tracking
-     */
-    public String submitForPlotGeneration(SimulationResults results, String algorithmName) {
+    public String submitForPlotGeneration(ProcessedResults processedResults, String algorithmName) {
         String simulationId = UUID.randomUUID().toString();
         
         PlotGenerationStatus status = new PlotGenerationStatus(simulationId);
         plotStatusMap.put(simulationId, status);
         
-        // start async plot generation
-        generatePlotsAsync(simulationId, results, algorithmName);
+        generatePlotsAsync(simulationId, processedResults, algorithmName);
         
         logger.info("Submitted simulation {} for async plot generation", simulationId);
         return simulationId;
     }
     
-    /**
-     * Generate plots asynchronously in background
-     */
     @Async
-    public CompletableFuture<ProcessedResults> generatePlotsAsync(String simulationId, SimulationResults results, String algorithmName) {
+    public CompletableFuture<ProcessedResults> generatePlotsAsync(String simulationId, ProcessedResults processedResults, String algorithmName) {
         PlotGenerationStatus status = plotStatusMap.get(simulationId);
         
         try {
@@ -100,83 +90,123 @@ public class AsyncPlotGenerationService {
             status.setMessage("Initializing MATLAB engine...");
             status.setProgress(0.1);
             
+            // Check if MATLAB service is available
             if (matlabService == null) {
-                throw new RuntimeException("MATLAB service not available");
+                logger.warn("MATLAB service not available, returning results without plots");
+                ProcessedResults resultsWithoutPlots = ProcessedResults.builder()
+                        .simulationId(simulationId)
+                        .plotData(new java.util.HashMap<>())
+                        .rawResults(processedResults.getRawResults())
+                        .plotMetadata(new java.util.ArrayList<>())
+                        .build();
+                
+                plotResultsMap.put(simulationId, resultsWithoutPlots);
+                status.setStatus(PlotStatus.COMPLETED);
+                status.setMessage("Simulation completed (MATLAB not available - plots skipped)");
+                status.setProgress(1.0);
+                status.setEndTime(System.currentTimeMillis());
+                
+                return CompletableFuture.completedFuture(resultsWithoutPlots);
             }
             
-            // ensure matlab engine is ready
+            // Check if MATLAB is ready
             if (!matlabService.isReady()) {
                 status.setMessage("Waiting for MATLAB engine...");
                 status.setProgress(0.2);
-                // wait a bit for engine to warm up
                 Thread.sleep(2000);
+                
+                // Check again after waiting
+                if (!matlabService.isReady()) {
+                    logger.warn("MATLAB engine not ready after waiting, returning results without plots");
+                    ProcessedResults resultsWithoutPlots = ProcessedResults.builder()
+                            .simulationId(simulationId)
+                            .plotData(new java.util.HashMap<>())
+                            .rawResults(processedResults.getRawResults())
+                            .plotMetadata(new java.util.ArrayList<>())
+                            .build();
+                    
+                    plotResultsMap.put(simulationId, resultsWithoutPlots);
+                    status.setStatus(PlotStatus.COMPLETED);
+                    status.setMessage("Simulation completed (MATLAB not ready - plots skipped)");
+                    status.setProgress(1.0);
+                    status.setEndTime(System.currentTimeMillis());
+                    
+                    return CompletableFuture.completedFuture(resultsWithoutPlots);
+                }
             }
             
             status.setMessage("Generating plots...");
             status.setProgress(0.5);
             
-            // generate plots using matlab service
-            ProcessedResults processedResults = matlabService.processResults(results, algorithmName);
+            // Process results with MATLAB (now handles failures gracefully internally)
+            ProcessedResults resultsWithPlots = matlabService.processResults(processedResults.getRawResults(), algorithmName);
             
-            // override simulation id to match our tracking
-            processedResults = ProcessedResults.builder()
+            // Check if plots were actually generated
+            boolean plotsGenerated = resultsWithPlots.getPlotData() != null &&
+                                    !resultsWithPlots.getPlotData().isEmpty() &&
+                                    resultsWithPlots.getPlotData().get("plotPaths") != null;
+            
+            resultsWithPlots = ProcessedResults.builder()
                     .simulationId(simulationId)
-                    .plotData(processedResults.getPlotData())
-                    .rawResults(processedResults.getRawResults())
+                    .plotData(resultsWithPlots.getPlotData() != null ? resultsWithPlots.getPlotData() : new java.util.HashMap<>())
+                    .rawResults(resultsWithPlots.getRawResults())
+                    .plotMetadata(resultsWithPlots.getPlotMetadata() != null ? resultsWithPlots.getPlotMetadata() : new java.util.ArrayList<>())
                     .build();
             
             status.setProgress(0.9);
-            status.setMessage("Finalizing plots...");
+            status.setMessage("Finalizing...");
             
-            // store results
-            plotResultsMap.put(simulationId, processedResults);
+            plotResultsMap.put(simulationId, resultsWithPlots);
             
             status.setStatus(PlotStatus.COMPLETED);
-            status.setMessage("Plot generation completed successfully");
+            if (plotsGenerated) {
+                status.setMessage("Plot generation completed successfully");
+            } else {
+                status.setMessage("Simulation completed (plots could not be generated)");
+            }
             status.setProgress(1.0);
             status.setEndTime(System.currentTimeMillis());
             
-            logger.info("Completed async plot generation for simulation {} in {} ms", 
-                    simulationId, status.getElapsedTime());
+            logger.info("Completed async processing for simulation {} in {} ms (plots: {})",
+                    simulationId, status.getElapsedTime(), plotsGenerated ? "yes" : "no");
             
-            return CompletableFuture.completedFuture(processedResults);
+            return CompletableFuture.completedFuture(resultsWithPlots);
             
         } catch (Exception e) {
-            logger.error("Failed to generate plots for simulation {}", simulationId, e);
+            logger.error("Error during async plot generation for simulation {}: {}", simulationId, e.getMessage());
             
-            status.setStatus(PlotStatus.FAILED);
-            status.setMessage("Error: " + e.getMessage());
+            // Even on error, return the raw results
+            ProcessedResults fallbackResults = ProcessedResults.builder()
+                    .simulationId(simulationId)
+                    .plotData(new java.util.HashMap<>())
+                    .rawResults(processedResults.getRawResults())
+                    .plotMetadata(new java.util.ArrayList<>())
+                    .build();
+            
+            plotResultsMap.put(simulationId, fallbackResults);
+            
+            status.setStatus(PlotStatus.COMPLETED);
+            status.setMessage("Simulation completed (plot generation error: " + e.getMessage() + ")");
+            status.setProgress(1.0);
             status.setEndTime(System.currentTimeMillis());
             
-            return CompletableFuture.failedFuture(e);
+            return CompletableFuture.completedFuture(fallbackResults);
         }
     }
     
-    /**
-     * Get plot generation status
-     */
     public PlotGenerationStatus getStatus(String simulationId) {
         return plotStatusMap.get(simulationId);
     }
     
-    /**
-     * Get completed plot results
-     */
     public ProcessedResults getResults(String simulationId) {
         return plotResultsMap.get(simulationId);
     }
     
-    /**
-     * Check if plots are ready
-     */
     public boolean isPlotsReady(String simulationId) {
         PlotGenerationStatus status = plotStatusMap.get(simulationId);
         return status != null && status.getStatus() == PlotStatus.COMPLETED;
     }
     
-    /**
-     * Clean up old results (optional, call periodically)
-     */
     public void cleanupOldResults(long maxAgeMs) {
         long now = System.currentTimeMillis();
         plotStatusMap.entrySet().removeIf(entry -> {

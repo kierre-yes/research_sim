@@ -10,6 +10,7 @@ import com.thesis.cloudsim.service.ComparisonService;
 import com.thesis.cloudsim.algorithm.ISchedulingAlgorithm;
 import com.thesis.cloudsim.matlab.MatlabIntegrationService;
 import com.thesis.cloudsim.dto.ProcessedResults;
+import com.thesis.cloudsim.service.AnalysisInterpretationService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -59,6 +60,9 @@ public class ApiController {
     // I mark MATLAB service as optional so the app works without MATLAB installed
     @Autowired(required = false)
     private MatlabIntegrationService matlabService;
+
+    @Autowired
+    private AnalysisInterpretationService analysisService;
 
     public ApiController(@Qualifier("epso") ISchedulingAlgorithm epso,
                         @Qualifier("eaco") ISchedulingAlgorithm eaco,
@@ -354,17 +358,29 @@ public class ApiController {
             String algorithmName = request.getOptimizationAlgorithm() != null ? 
                 request.getOptimizationAlgorithm() : "CloudSim";
             ProcessedResults processedResults = matlabService.processResults(rawResults, algorithmName);
-            
-            // Return the processed results with plot data
-            logger.info("Returning simulation results with MATLAB plots");
-            return ResponseEntity.ok(processedResults);
+            // Generate analysis (same as other runs)
+            java.util.Map<String, Object> analysis = analysisService.generateCompleteAnalysis(processedResults, algorithmName);
+            // respond with top-level fields so frontend can consume directly
+            java.util.Map<String, Object> resp = new java.util.LinkedHashMap<>();
+            resp.put("rawResults", processedResults.getRawResults());
+            resp.put("plotData", processedResults.getPlotData());
+            resp.put("plotMetadata", processedResults.getPlotMetadata());
+            resp.put("analysis", analysis);
+            logger.info("Returning simulation results with MATLAB plots and analysis");
+            return ResponseEntity.ok(resp);
         } catch (Exception e) {
             logger.error("Failed to generate MATLAB plots, returning raw results", e);
             // Fall back to raw results if plot generation fails
             rawResults.setRunId(java.util.UUID.randomUUID().toString());
             rawResults.setSeed(request.getSeed());
             rawResults.setConfigSnapshot(createConfigSnapshot(request));
-            return ResponseEntity.ok(rawResults);
+            // Also include analysis 
+            ProcessedResults fallback = ProcessedResults.builder().rawResults(rawResults).build();
+            java.util.Map<String, Object> analysis = analysisService.generateCompleteAnalysis(fallback, request.getOptimizationAlgorithm());
+            java.util.Map<String, Object> resp = new java.util.LinkedHashMap<>();
+            resp.put("simulationResults", rawResults);
+            resp.put("analysis", analysis);
+            return ResponseEntity.ok(resp);
         }
     }
     
@@ -379,14 +395,20 @@ public class ApiController {
         EnhancedSimulationManager manager = new EnhancedSimulationManager(algorithm, request);
         SimulationResults results = manager.run();
         
-        // Add run metadata for reproducibility
+        // add run metadata for reproducibility
         results.setRunId(java.util.UUID.randomUUID().toString());
         results.setSeed(request.getSeed());
         results.setConfigSnapshot(createConfigSnapshot(request));
         results.setDatasetId(request.getWorkloadPath() != null ? 
             "custom-" + request.getWorkloadPath().hashCode() : "synthetic");
         
-        return ResponseEntity.ok(results);
+        //also return analysis like other endpoints do
+        ProcessedResults processed = ProcessedResults.builder().rawResults(results).build();
+        java.util.Map<String, Object> analysis = analysisService.generateCompleteAnalysis(processed, request.getOptimizationAlgorithm());
+        java.util.Map<String, Object> resp = new java.util.LinkedHashMap<>();
+        resp.put("simulationResults", results);
+        resp.put("analysis", analysis);
+        return ResponseEntity.ok(resp);
     }
     
     private Map<String, Object> createConfigSnapshot(SimulationRequest request) {
@@ -429,7 +451,7 @@ public class ApiController {
         
         request.setWorkloadType(normalizedType);
         
-        // Basic numeric validation and sensible bounds
+        // basic numeric validation and sensible bounds
         ensurePositive("numHosts", request.getNumHosts(), 1, 10000);
         ensurePositive("numVMs", request.getNumVMs(), 1, 100000);
         ensurePositive("numPesPerHost", request.getNumPesPerHost(), 1, 256);
@@ -445,19 +467,19 @@ public class ApiController {
         ensurePositive("numCloudlets", request.getNumCloudlets(), 1, 1000000);
         ensurePositive("iterations", request.getIterations(), 1, 1000);
         
-        // Workload type validation
+        // workload type validation
         String workloadType = request.getWorkloadType();
         if (!"CSV".equals(workloadType) && !"RAND".equals(workloadType)) {
             throw new IllegalArgumentException("workloadType must be CSV or RAND");
         }
         
-        // If CSV requested, ensure either default workload or path will be provided
+        // if CSV requested, ensure either default workload or path will be provided
         if ("CSV".equals(request.getWorkloadType()) && !request.isUseDefaultWorkload() && (request.getWorkloadPath() == null || request.getWorkloadPath().isBlank())) {
             throw new IllegalArgumentException("CSV workload requires a file upload or useDefaultWorkload=true");
         }
     }
 
-    // Variant used for comparison endpoints where a single algorithm is not required
+    // variant used for comparison endpoints where a single algorithm is not required
     private void normalizeAndValidateForComparison(SimulationRequest request) {
         // Do not enforce optimizationAlgorithm here; comparison runs both internally
         if (request.getVmScheduler() == null || request.getVmScheduler().isBlank()) {
@@ -526,7 +548,7 @@ public class ApiController {
         if (!name.toLowerCase().endsWith(".csv")) {
             throw new IllegalArgumentException("Only .csv files are accepted");
         }
-        long maxBytes = 500L * 1024 * 1024; // 500 MB
+long maxBytes = 1024L * 1024 * 1024; // 1 GB
         if (file.getSize() > maxBytes) {
             throw new IllegalArgumentException("File too large. Max 500 MB");
         }

@@ -269,6 +269,35 @@ public final class AlgorithmMetricUtils {
     }
 
     /**
+     * calculate multi-objective fitness value for a scheduling solution
+     * 
+     * I centralize fitness calculation to ensure consistency between EPSO and EACO
+     * this eliminates code duplication and ensures fair algorithm comparison
+     */
+    public static double calculateFitness(Map<Cloudlet, Vm> schedule, 
+                                         List<Cloudlet> cloudlets, 
+                                         List<Vm> vms,
+                                         AlgorithmParameters parameters) {
+        // Calculate raw metrics
+        double makespan = makespan(schedule);
+        double cost = enhancedCost(schedule, cloudlets, vms);
+        double energy = energy(schedule);
+        double loadBalance = degreeOfImbalance(schedule);
+        
+        // Normalize metrics to [0,1] range
+        makespan = normalise("makespan", makespan, cloudlets, vms);
+        cost = normalise("enhancedCost", cost, cloudlets, vms);
+        energy = normalise("energy", energy, cloudlets, vms);
+        loadBalance = normalise("loadBalance", loadBalance, cloudlets, vms);
+        
+        // Calculate weighted sum (lower is better)
+        return parameters.getDouble(AlgorithmParameters.MAKESPAN_WEIGHT) * makespan +
+               parameters.getDouble(AlgorithmParameters.COST_WEIGHT) * cost +
+               parameters.getDouble(AlgorithmParameters.ENERGY_WEIGHT) * energy +
+               parameters.getDouble(AlgorithmParameters.LOAD_BALANCE_WEIGHT) * loadBalance;
+    }
+    
+    /**
      * Linear normalization of metrics to [0,1] range
      * 
      * I normalize metrics so that different units can be combined in multi-objective

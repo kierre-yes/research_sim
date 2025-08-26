@@ -103,7 +103,7 @@ public class CustomSchedulingBroker extends DatacenterBroker {
                 
                 if (vm != null) {
                     // I assign the VM ID to the cloudlet so CloudSim knows where to run it
-                    cloudlet.setGuestId(vm.getId());
+                    cloudlet.setVmId(vm.getId());
                     
                     logger.debug("VM {} - User ID: {} - Host: {}", vm.getId(), vm.getUserId(), 
                                      (vm.getHost() != null ? vm.getHost().getId() : "null"));
@@ -226,8 +226,8 @@ public class CustomSchedulingBroker extends DatacenterBroker {
     @Override
     public void processEvent(SimEvent ev) {
         // Check if this is a delayed submission event
-        if (ev.getTag() == CloudActionTags.CLOUDLET_SUBMIT && 
-            ev.getSource() == getId() && 
+                        if (ev.getTag() == CloudActionTags.CLOUDLET_SUBMIT && 
+            ev.getSource() == getId() &&   
             CloudSim.clock() > 0) {
             // This is a self-scheduled event for delayed submission
             logger.debug("Processing staged submission at time {}", CloudSim.clock());

@@ -1,43 +1,42 @@
 package com.thesis.cloudsim.algorithm;
 
+/*
+* i centralize now the metric utils in order to avvoid duplication and inconsistencies.
+*/
 import org.cloudbus.cloudsim.Cloudlet;
 import org.cloudbus.cloudsim.Vm;
-
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
-import java.util.concurrent.ThreadLocalRandom;
 import static com.thesis.cloudsim.algorithm.AlgorithmMetricUtils.*;
 
 /**
- * Enhanced Ant Colony Optimization for task scheduling
- * 
- * I implement ACO with adaptive pheromone evaporation, load-based reinforcement,
- * and pheromone convergence detection for improved performance
+ * based scheduler for aco to enable algo to algo comparison
  */
 public class EnhancedACO implements ISchedulingAlgorithm {
     
     private static final String ALGORITHM_NAME = "EACO";
-    private final Map<String, Double> metrics;
+    private final Map<String, Double> metrics; //avoid mutating the internal state
+    //drives stochastic parts
     private final Random random;
     
-    // Core ACO components - pheromone trails guide ants to good solutions
+    // main aco components
     private List<Ant> ants;
-    private double[][] pheromoneMatrix;  // I store pheromone levels for each cloudlet-VM pair
-    private double[][] heuristicMatrix;  // I store heuristic values based on execution time and resources
+    private double[][] pheromoneMatrix;  // for learning preferences, I store pheromone levels for each cloudlet-VM pair
+    private double[][] heuristicMatrix;  // this will store heuristic values based on execution time and resources
     private Map<Cloudlet, Vm> bestSolution;
     private double bestFitness;
     private int currentIteration;
     
-    // I track convergence metrics so that we can stop early when the algorithm stabilizes
+    //convergence metrics so that we can stop early when the algorithm stabilizes
     private double previousBestFitness;
     private int stagnationCounter;
     private double previousPheromoneConvergence;  // I track pheromone variance to detect convergence
     
-    // CloudSim entities
+    // entities
     private List<Cloudlet> cloudlets;
     private List<Vm> vms;
     private AlgorithmParameters parameters;
@@ -80,7 +79,7 @@ public class EnhancedACO implements ISchedulingAlgorithm {
         initializeMatrices();
         initializeAnts();
         
-        // Main ACO loop - ants build solutions, deposit pheromones, and learn from each other
+        // aco loop - ants build solutions, deposit pheromones, and learn from each other
         for (currentIteration = 0; currentIteration < parameters.getInt(AlgorithmParameters.MAX_ITERATIONS); currentIteration++) {
             constructSolutions();     // Each ant builds a complete scheduling solution
             updateBestSolution();     // Track the best solution found so far
@@ -129,7 +128,7 @@ public class EnhancedACO implements ISchedulingAlgorithm {
             for (int j = 0; j < vms.size(); j++) {
                 Vm vm = vms.get(j);
                 
-                // I use execution time as the primary heuristic - shorter is better
+                // I use execution time as the primary heuristic which for shorter is better
                 double executionTime = cloudlet.getCloudletLength() / vm.getMips();
                 
                 // I factor in resource availability so that ants prefer VMs with more available resources
@@ -141,7 +140,7 @@ public class EnhancedACO implements ISchedulingAlgorithm {
                 }
                 
                 // I combine execution time and resource ratio to create the heuristic value
-                // Higher values indicate more desirable assignments
+                // higher values indicate more desirable assignments
                 heuristicMatrix[i][j] = (1.0 / executionTime) * resourceRatio;
             }
         }
@@ -238,8 +237,8 @@ public class EnhancedACO implements ISchedulingAlgorithm {
             return rhoMax; // Maximum evaporation for maximum exploration
         }
         
-        // I increase evaporation when solutions are similar (small fitness gap)
-        // and decrease it when solutions are diverse (large fitness gap)
+        // I increase evaporation when solutions are similar by small fitness gap
+        // and decrease it when solutions are diverse by large fitness gap
         double adaptiveRate = rhoMin + (rhoMax - rhoMin) * 
                              ((bestFitnessValue - avgFitness) / bestFitnessValue);
         
@@ -316,28 +315,12 @@ public class EnhancedACO implements ISchedulingAlgorithm {
     }
     
     private double calculateFitness(Map<Cloudlet, Vm> schedule) {
-        // Multi-objective fitness
-        double makespan = AlgorithmMetricUtils.makespan(schedule);
-        double cost = AlgorithmMetricUtils.enhancedCost(schedule, cloudlets, vms);
-        double energy = AlgorithmMetricUtils.energy(schedule);
-        double loadBalance = AlgorithmMetricUtils.loadBalance(schedule);
-
-        // Normalize metrics
-        makespan = AlgorithmMetricUtils.normalise("makespan", makespan, cloudlets, vms);
-        cost = AlgorithmMetricUtils.normalise("enhancedCost", cost, cloudlets, vms);
-        energy = AlgorithmMetricUtils.normalise("energy", energy, cloudlets, vms);
-        loadBalance = AlgorithmMetricUtils.normalise("loadBalance", loadBalance, cloudlets, vms);
-        
-        // Weighted sum calculation
-        double fitness = parameters.getDouble(AlgorithmParameters.MAKESPAN_WEIGHT) * makespan +
-                        parameters.getDouble(AlgorithmParameters.COST_WEIGHT) * cost +
-                        parameters.getDouble(AlgorithmParameters.ENERGY_WEIGHT) * energy +
-                        parameters.getDouble(AlgorithmParameters.LOAD_BALANCE_WEIGHT) * loadBalance;
-        
-        return fitness;
+        // I use centralized fitness calculation to ensure consistency with EPSO
+        // This eliminates code duplication and ensures fair algorithm comparison
+        return AlgorithmMetricUtils.calculateFitness(schedule, cloudlets, vms, parameters);
     }
     
-    // these methods were removed as they duplicate functionality in AlgorithmMetricUtils
+    // these methods were  planned to be removed as they duplicate functionality in AlgorithmMetricUtils
     // I switch now to AlgorithmMetricUtils.makespan(), cost(), energy(), loadBalance() instead
     
     private void calculateMetrics(Map<Cloudlet, Vm> schedule) {
@@ -474,7 +457,7 @@ public class EnhancedACO implements ISchedulingAlgorithm {
             double[] probabilities = new double[vms.size()];
             double totalProbability = 0.0;
             
-            // Calculate probabilities based on pheromone and heuristic information
+            // this to calculate probabilities based on pheromone and heuristic information
             for (int j = 0; j < vms.size(); j++) {
                 double pheromone = Math.pow(pheromoneMatrix[cloudletIndex][j], alpha);
                 double heuristic = Math.pow(heuristicMatrix[cloudletIndex][j], beta);

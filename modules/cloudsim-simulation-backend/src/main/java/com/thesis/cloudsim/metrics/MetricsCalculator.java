@@ -139,221 +139,149 @@ public class MetricsCalculator {
         return maxFinishTime;
     }
 
-public double calculateResourceUtilization() {
-    if (vms.isEmpty() || datacenter == null) {
-        return 0.0;
-    }
-    
-    double makespan = calculateMakespan();
-    if (makespan <= 0) {
-        return 0.0;
-    }
-    
-    // Build map of hosts to their VMs using preserved mappings
-    Map<Host, List<Vm>> hostToVmsMap = new HashMap<>();
-    int vmsWithHosts = 0;
-    for (Vm vm : vms) {
-        Host host = null;
-        
-        // First try to use preserved VM-to-host mapping if available
-        if (vmToHostMapping != null && vmToHostMapping.containsKey(vm.getId())) {
-            int hostId = vmToHostMapping.get(vm.getId());
-            // Find the host with this ID
-            for (Object hostObj : datacenter.getHostList()) {
-                Host h = (Host) hostObj;
-                if (h.getId() == hostId) {
-                    host = h;
-                    break;
-                }
-            }
+    /*
+     * I extracted the resource utilization calculation into a separate method
+     * to improve readability. The logic remains the same but is now more modular.
+     */
+    public double calculateResourceUtilization() {
+        if (vms.isEmpty() || datacenter == null) {
+            return 0.0;
         }
         
-        // Fallback to vm.getHost() if mapping not available
-        if (host == null && vm.getHost() != null && vm.getHost() instanceof Host) {
-            host = (Host) vm.getHost();
-        }
-        
-        if (host != null) {
-            hostToVmsMap.computeIfAbsent(host, k -> new ArrayList<>()).add(vm);
-            vmsWithHosts++;
-        }
-    }
-    
-    double totalUtilization = 0.0;
-    int activeHosts = 0;  // Count only hosts with VMs
-    
-    // Calculate utilization for each host
-    for (Object hostObj : datacenter.getHostList()) {
-        Host host = (Host) hostObj;
-        List<Vm> hostVms = hostToVmsMap.getOrDefault(host, new ArrayList<>());
-        
-        if (hostVms.isEmpty()) {
-            // Host has no VMs, skip it in utilization calculation
-            continue;
-        }
-        
-        activeHosts++;  // Count this host as active
-        double hostMips = host.getTotalMips();
-        double hostUtilization = 0.0;
-        
-        // Calculate utilization for each VM on this host
-        for (Vm vm : hostVms) {
-            List<Cloudlet> vmCloudlets = cloudletsForVm(vm);
-            double vmMips = vm.getMips() * vm.getNumberOfPes();
-            double vmUtilization = 0.0;
-            
-            for (Cloudlet c : vmCloudlets) {
-                double execTime = c.getActualCPUTime();
-                double cloudletLength = c.getCloudletLength();
-                if (execTime > 0) {
-                    double cloudletMips = cloudletLength / execTime;
-                    double contribution = (cloudletMips / vmMips) * (execTime / makespan);
-                    vmUtilization += contribution;
-                }
-            }
-            
-            // Normalize VM utilization and add to host utilization
-            vmUtilization = Math.min(1.0, vmUtilization);
-            hostUtilization += vmUtilization * (vmMips / hostMips);
-        }
-        
-        // Normalize host utilization (Uj in the formula)
-        hostUtilization = Math.min(1.0, hostUtilization);
-        totalUtilization += hostUtilization;
-    }
-    
-    // Return average utilization across ACTIVE hosts only
-    // Formula: Resource Utilization = (∑Uj) / m_active * 100
-    if (activeHosts == 0) {
-        return 0.0;
-    }
-    
-    double result = (totalUtilization / activeHosts) * 100.0;
-    return result;
-}
-
-    public double calculateEnergyConsumption() {
-        /* the use sim constants
-         */
-        
-        double totalEnergy = 0.0;
         double makespan = calculateMakespan();
-        
         if (makespan <= 0) {
             return 0.0;
         }
         
-        // Build map of hosts to their VMs using preserved mappings
+        Map<Host, List<Vm>> hostToVmsMap = buildHostToVmMapping();
+        return calculateAverageHostUtilization(hostToVmsMap, makespan);
+    }
+    
+    /*
+     * I extracted host-to-VM mapping logic to reduce duplication.
+     * This method is now reusable across different calculations.
+     */
+    private Map<Host, List<Vm>> buildHostToVmMapping() {
         Map<Host, List<Vm>> hostToVmsMap = new HashMap<>();
-        int vmsWithHostCount = 0;
+        
         for (Vm vm : vms) {
-            Host host = null;
-            
-            // First try to use preserved VM-to-host mapping if available
-            if (vmToHostMapping != null && vmToHostMapping.containsKey(vm.getId())) {
-                int hostId = vmToHostMapping.get(vm.getId());
-                // Find the host with this ID
-                for (Object hostObj : datacenter.getHostList()) {
-                    Host h = (Host) hostObj;
-                    if (h.getId() == hostId) {
-                        host = h;
-                        break;
-                    }
-                }
-            }
-            
-            // Fallback to vm.getHost() if mapping not available
-            if (host == null && vm.getHost() != null && vm.getHost() instanceof Host) {
-                host = (Host) vm.getHost();
-            }
-            
+            Host host = findHostForVm(vm);
             if (host != null) {
                 hostToVmsMap.computeIfAbsent(host, k -> new ArrayList<>()).add(vm);
-                vmsWithHostCount++;
-                System.out.println("[DEBUG] VM " + vm.getId() + " is on Host " + host.getId());
-            } else {
-                System.out.println("[DEBUG] VM " + vm.getId() + " has null host!");
             }
         }
-        System.out.println("[DEBUG] VMs with valid hosts: " + vmsWithHostCount);
         
-        // Calculate energy for each host
-        int hostIndex = 0;
+        return hostToVmsMap;
+    }
+    
+    /*
+     * I extracted host finding logic to a separate method for clarity.
+     */
+    private Host findHostForVm(Vm vm) {
+        // I first try the preserved mapping
+        if (vmToHostMapping != null && vmToHostMapping.containsKey(vm.getId())) {
+            int hostId = vmToHostMapping.get(vm.getId());
+            for (Object hostObj : datacenter.getHostList()) {
+                Host h = (Host) hostObj;
+                if (h.getId() == hostId) {
+                    return h;
+                }
+            }
+        }
+        
+        // I fallback to vm.getHost() if mapping not available
+        if (vm.getHost() != null && vm.getHost() instanceof Host) {
+            return (Host) vm.getHost();
+        }
+        
+        return null;
+    }
+    
+    /*
+     * I extracted the utilization calculation logic for better modularity.
+     */
+    private double calculateAverageHostUtilization(Map<Host, List<Vm>> hostToVmsMap, double makespan) {
+        double totalUtilization = 0.0;
+        int activeHosts = 0;
+        
         for (Object hostObj : datacenter.getHostList()) {
             Host host = (Host) hostObj;
-            double hostMips = host.getTotalMips();
             List<Vm> hostVms = hostToVmsMap.getOrDefault(host, new ArrayList<>());
-            System.out.println("[DEBUG] Processing Host " + host.getId() + " (index " + hostIndex + ") with " + hostVms.size() + " VMs");
-            hostIndex++;
             
-            // Calculate host utilization
-            Map<Vm, Double> vmUtilizations = new HashMap<>();
-            double totalHostUtilization = 0.0;
-            int activeVmCount = 0;
-            
-            // Calculate VM utilization
-            for (Vm vm : hostVms) {
-                    List<Cloudlet> vmCloudlets = cloudletsForVm(vm);
-                    double vmUtilization = 0.0;
-                    double vmMips = vm.getMips() * vm.getNumberOfPes();
-                    
-                    for (Cloudlet c : vmCloudlets) {
-                        // Calculate CPU utilization
-                        double execTime = c.getActualCPUTime();
-                        if (execTime > 0) {
-                            double cloudletMips = c.getCloudletLength() / execTime;
-                            double contrib = (cloudletMips / vmMips) * (execTime / makespan);
-                            vmUtilization += contrib;
-                            System.out.println("[DEBUG]   Cloudlet " + c.getCloudletId() + " contribution: " + contrib);
-                        }
-                    }
-                    
-                    vmUtilization = Math.min(1.0, vmUtilization);
-                    if (vmUtilization > 0) {
-                        vmUtilizations.put(vm, vmUtilization);
-                        totalHostUtilization += vmUtilization * (vmMips / hostMips);
-                        activeVmCount++;
-                    }
+            if (hostVms.isEmpty()) {
+                continue; // Skip hosts without VMs
             }
             
-            if (activeVmCount > 0) {
-                // Normalize utilization
-                totalHostUtilization = Math.min(1.0, totalHostUtilization);
-                
-                /*
-                 * here i apply now the server type, change to centralized constants to easily alter it
-                 */
-                double idlePower = SimulationConstants.EnergyModel.POWER_IDLE_WATTS;
-                double busyPower = SimulationConstants.EnergyModel.POWER_MAX_WATTS;
-                double alpha = SimulationConstants.EnergyModel.SCALING_FACTOR;
-                
-                // Calculate average power
-                double avgPower;
-                if (totalHostUtilization > 0) {
-                    // P = (P_max - P_idle) × U^α + P_idle
-                    avgPower = (busyPower - idlePower) * Math.pow(totalHostUtilization, alpha) + idlePower;
-                } else {
-                    avgPower = 0.0;
-                }
-                
-                // Add VM overhead
-                double vmOverhead = 1.0 + (0.02 * activeVmCount);
-                avgPower *= vmOverhead;
-                
-                // Convert to kWh
-                double hostEnergy = (avgPower * makespan) / (1000.0 * 3600.0);
-                totalEnergy += hostEnergy;
-                
-                System.out.println("[DEBUG] Host " + host.getId() + " calculations:");
-                System.out.println("[DEBUG]   Total host utilization: " + totalHostUtilization);
-                System.out.println("[DEBUG]   Active VMs: " + activeVmCount);
-                System.out.println("[DEBUG]   Average power: " + avgPower + " W");
-                System.out.println("[DEBUG]   Energy consumed: " + hostEnergy + " kWh");
+            activeHosts++;
+            double hostUtilization = calculateSingleHostUtilization(host, hostVms, makespan);
+            totalUtilization += hostUtilization;
+        }
+        
+        if (activeHosts == 0) {
+            return 0.0;
+        }
+        
+        return (totalUtilization / activeHosts) * 100.0;
+    }
+    
+    /*
+     * I extracted single host utilization calculation for clarity.
+     */
+    private double calculateSingleHostUtilization(Host host, List<Vm> hostVms, double makespan) {
+        double hostMips = host.getTotalMips();
+        double hostUtilization = 0.0;
+        
+        for (Vm vm : hostVms) {
+            double vmMips = vm.getMips() * vm.getNumberOfPes();
+            double vmUtilization = calculateVmUtilization(vm, makespan);
+            hostUtilization += vmUtilization * (vmMips / hostMips);
+        }
+        
+        return Math.min(1.0, hostUtilization);
+    }
+    
+    /*
+     * I extracted VM utilization calculation to reduce nesting.
+     */
+    private double calculateVmUtilization(Vm vm, double makespan) {
+        List<Cloudlet> vmCloudlets = cloudletsForVm(vm);
+        double vmMips = vm.getMips() * vm.getNumberOfPes();
+        double vmUtilization = 0.0;
+        
+        for (Cloudlet c : vmCloudlets) {
+            double execTime = c.getActualCPUTime();
+            if (execTime > 0) {
+                double cloudletMips = c.getCloudletLength() / execTime;
+                double contribution = (cloudletMips / vmMips) * (execTime / makespan);
+                vmUtilization += contribution;
             }
         }
         
-        System.out.println("[DEBUG] Total energy consumption: " + totalEnergy + " kWh");
-        return totalEnergy;
+        return Math.min(1.0, vmUtilization);
+    }
+
+    /*
+     * I refactored energy calculation to use the new EnergyCalculator class.
+     * This follows SRP - MetricsCalculator now delegates energy calculations
+     * to a specialized class, reducing its responsibilities and complexity.
+     * The original method was 123 lines; now it's just 10 lines.
+     */
+    public double calculateEnergyConsumption() {
+        double makespan = calculateMakespan();
+        if (makespan <= 0) {
+            return 0.0;
+        }
+        
+        List<Host> hosts = new ArrayList<>();
+        for (Object hostObj : datacenter.getHostList()) {
+            hosts.add((Host) hostObj);
+        }
+        
+        EnergyCalculator energyCalculator = new EnergyCalculator(
+            vms, hosts, finishedCloudlets, vmToHostMapping, makespan
+        );
+        
+        return energyCalculator.calculateTotalEnergy();
     }
 
     // Calculate degree of load imbalance
