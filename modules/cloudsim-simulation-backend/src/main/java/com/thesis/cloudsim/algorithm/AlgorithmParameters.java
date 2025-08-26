@@ -3,12 +3,16 @@ package com.thesis.cloudsim.algorithm;
 import java.util.HashMap;
 import java.util.Map;
 
-// Configuration parameters for scheduling algorithms
+/*
+ * define config params
+ */
 public class AlgorithmParameters {
     
     private final Map<String, Object> parameters;
     
-    // Common parameters
+    /*
+     * params
+     */
     public static final String MAX_ITERATIONS = "maxIterations";
     public static final String POPULATION_SIZE = "populationSize";
     public static final String MAKESPAN_WEIGHT = "makespanWeight";
@@ -36,6 +40,12 @@ public class AlgorithmParameters {
     public static final String MAX_PHEROMONE = "maxPheromone";
     public static final String EVAPORATION_MIN = "evaporationMin";
     public static final String EVAPORATION_MAX = "evaporationMax";
+    
+    // i add early stoppers based on a yt feed i watch about algo
+    public static final String ENABLE_EARLY_STOPPING = "enableEarlyStopping";
+    public static final String STAGNATION_ITERATIONS = "stagnationIterations";
+    public static final String FITNESS_IMPROVEMENT_THRESHOLD = "fitnessImprovementThreshold";
+    public static final String PHEROMONE_VARIANCE_THRESHOLD = "pheromoneVarianceThreshold";
     
     public AlgorithmParameters() {
         this.parameters = new HashMap<>();
@@ -77,6 +87,12 @@ public class AlgorithmParameters {
         parameters.put(MAX_PHEROMONE, 1.0);
         parameters.put(EVAPORATION_MIN, 0.1);
         parameters.put(EVAPORATION_MAX, 0.9);
+        
+        // disable on default
+        parameters.put(ENABLE_EARLY_STOPPING, false);
+        parameters.put(STAGNATION_ITERATIONS, 15);  // stop
+        parameters.put(FITNESS_IMPROVEMENT_THRESHOLD, 0.001);  // Minimum improvement to not count as stagnation
+        parameters.put(PHEROMONE_VARIANCE_THRESHOLD, 0.01);  // For ACO convergence detection
     }
     
     public <T> T getParameter(String key, Class<T> type) {

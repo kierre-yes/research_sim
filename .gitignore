@@ -611,3 +611,16 @@ dmypy.json
 # Cython debug symbols
 cython_debug/
 
+# Generated plot artifacts (ignored)
+# Top-level module plot outputs
+modules/cloudsim-simulation-backend/plots/
+modules/cloudsim-simulation-backend/plots/**
+
+# Resources plot outputs bundled during development/testing
+modules/cloudsim-simulation-backend/src/main/resources/plots/
+modules/cloudsim-simulation-backend/src/main/resources/plots/**
+
+# Optional: ignore test plots generated for demos
+modules/cloudsim-simulation-backend/src/main/resources/test_plots/
+modules/cloudsim-simulation-backend/src/main/resources/test_plots/**
+

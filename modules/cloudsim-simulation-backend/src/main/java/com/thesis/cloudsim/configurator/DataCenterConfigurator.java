@@ -8,7 +8,6 @@ import org.cloudbus.cloudsim.Vm;
 import org.cloudbus.cloudsim.VmAllocationPolicySimple;
 import org.cloudbus.cloudsim.VmSchedulerTimeShared;
 import org.cloudbus.cloudsim.CloudletSchedulerTimeShared;
-import org.cloudbus.cloudsim.power.models.PowerModelLinear;
 import org.cloudbus.cloudsim.provisioners.BwProvisionerSimple;
 import org.cloudbus.cloudsim.provisioners.RamProvisionerSimple;
 import org.cloudbus.cloudsim.provisioners.PeProvisionerSimple;
@@ -58,7 +57,7 @@ public class DataCenterConfigurator {
             String arch = "x86";
             String os = "Linux";
             String vmm = "Xen";
-            double time_zone = 10.0;
+            double timeZone = 10.0;
             double cost = 3.0;
             double costPerMem = 0.05;
             double costPerStorage = 0.001;
@@ -66,7 +65,7 @@ public class DataCenterConfigurator {
             
             List<Host> hostList = buildHosts();
             DatacenterCharacteristics characteristics = new DatacenterCharacteristics(
-                arch, os, vmm, hostList, time_zone, cost, costPerMem, costPerStorage, costPerBw);
+                arch, os, vmm, hostList, timeZone, cost, costPerMem, costPerStorage, costPerBw);
             
             // Create datacenter
             List<Storage> storageList = new ArrayList<>();

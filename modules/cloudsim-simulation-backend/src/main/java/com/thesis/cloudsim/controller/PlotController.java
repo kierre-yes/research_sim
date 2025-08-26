@@ -1,66 +1,78 @@
 package com.thesis.cloudsim.controller;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.Resource;
 import org.springframework.core.io.UrlResource;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
+import java.io.IOException;
+import java.net.MalformedURLException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 
 @RestController
 @RequestMapping("/api/plots")
 public class PlotController {
-
+    
+    private static final Logger logger = LoggerFactory.getLogger(PlotController.class);
+    
+    @Value("${plots.directory:plots}")
+    private String plotsDirectory;
+    
     @GetMapping("/{simulationId}/{filename}")
     public ResponseEntity<Resource> getPlot(
             @PathVariable String simulationId,
             @PathVariable String filename) {
+        
         try {
-            // Validate inputs to prevent path traversal
-            if (simulationId.contains("..")
-                    || simulationId.contains("/")
-                    || simulationId.contains("\\")
-                    || filename.contains("..")
-                    || filename.contains("/")
-                    || filename.contains("\\")) {
+            // Sanitize inputs to prevent directory traversal
+            if (simulationId.contains("..") || filename.contains("..")) {
                 return ResponseEntity.badRequest().build();
             }
             
-            // Validate filename format
-            if (!filename.matches("^[a-zA-Z0-9_-]+\\.(png|jpg|jpeg)$")) {
+            // Only allow PNG files
+            if (!filename.endsWith(".png")) {
                 return ResponseEntity.badRequest().build();
             }
             
-            // Construct path to the plot file
-            Path basePath = Paths.get("plots").toAbsolutePath().normalize();
-            Path filePath = basePath.resolve(simulationId).resolve(filename).normalize();
+            Path plotPath = Paths.get(plotsDirectory, simulationId, filename).normalize();
             
-            // Ensure the resolved path is within the expected directory
-            if (!filePath.startsWith(basePath)) {
-                return ResponseEntity.badRequest().build();
-            }
-            
-            Resource resource = new UrlResource(filePath.toUri());
-            
-            if (resource.exists() && resource.isReadable()) {
-                // Determine content type
-                String contentType = "image/png"; // Default to PNG
-                if (filename.toLowerCase().endsWith(".jpg") || filename.toLowerCase().endsWith(".jpeg")) {
-                    contentType = "image/jpeg";
-                }
-                
-                return ResponseEntity.ok()
-                        .contentType(MediaType.parseMediaType(contentType))
-                        .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"" + resource.getFilename() + "\"")
-                        .body(resource);
-            } else {
+            // Check if file exists
+            if (!Files.exists(plotPath)) {
+                logger.warn("Plot file not found: {}", plotPath);
                 return ResponseEntity.notFound().build();
             }
-        } catch (Exception e) {
+            
+            Resource resource = new UrlResource(plotPath.toUri());
+            
+            if (!resource.exists() || !resource.isReadable()) {
+                logger.error("Plot file not readable: {}", plotPath);
+                return ResponseEntity.notFound().build();
+            }
+            
+            // Set proper headers for image serving (CORS handled by Spring config)
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.IMAGE_PNG);
+            headers.setCacheControl("public, max-age=3600");
+            
+            return ResponseEntity.ok()
+                    .headers(headers)
+                    .body(resource);
+                    
+        } catch (MalformedURLException e) {
+            logger.error("Error serving plot file", e);
             return ResponseEntity.badRequest().build();
         }
+    }
+    
+    @GetMapping("/health")
+    public ResponseEntity<String> health() {
+        return ResponseEntity.ok("Plot service is running");
     }
 }

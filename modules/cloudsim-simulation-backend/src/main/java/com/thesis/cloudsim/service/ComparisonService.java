@@ -7,6 +7,7 @@ import com.thesis.cloudsim.dto.TTestResults;
 import com.thesis.cloudsim.algorithm.ISchedulingAlgorithm;
 import com.thesis.cloudsim.matlab.MatlabIntegrationService;
 import com.thesis.cloudsim.metrics.SimulationResults;
+import com.thesis.cloudsim.util.ConfigurationSnapshotUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -30,6 +31,9 @@ public class ComparisonService {
     @Autowired(required = false)
     private MatlabIntegrationService matlabService;
     
+    @Autowired
+    private AnalysisInterpretationService analysisService;
+    
     private final ISchedulingAlgorithm epso;
     private final ISchedulingAlgorithm eaco;
     
@@ -47,10 +51,13 @@ public class ComparisonService {
         
         long startTime = System.currentTimeMillis();
         
-        // Ensure we have multiple iterations for statistical validity
-        if (request.getIterations() < 2) {
-            logger.warn("Iterations set to {} but need at least 2 for t-test. Setting to 30.", request.getIterations());
-            request.setIterations(30); // Default to 30 iterations for statistical significance
+        // ensure we have multiple iterations for statistical validity
+        boolean iterationsAdjusted = false;
+        int originalIterations = request.getIterations();
+        if (request.getIterations() < 30) {
+            logger.warn("Iterations set to {} but need at least 30 for t-test validity. Adjusting to 30.", request.getIterations());
+            request.setIterations(30);
+            iterationsAdjusted = true;
         }
         
         // Run iterations for both algorithms
@@ -65,6 +72,13 @@ public class ComparisonService {
         // Perform paired t-test analysis
         TTestResults tTestResults = performPairedTTest(eacoResults, epsoResults, request);
         
+        /**
+         * I generate statistical interpretations using the new analysis service
+         * to provide meaningful explanations instead of just raw numbers
+         */
+        Map<String, Object> statisticalInterpretation = analysisService.generateStatisticalInterpretation(tTestResults);
+        tTestResults.setInterpretation(statisticalInterpretation);
+        
         // Build comparison results
         ComparisonResults comparison = new ComparisonResults();
         comparison.setEacoResults(eacoResults);
@@ -74,6 +88,20 @@ public class ComparisonService {
         comparison.setWorkloadName(request.getWorkloadPath() != null ? 
             "Custom Workload" : "Random Workload");
         comparison.setIterations(request.getIterations());
+        comparison.setIterationsAdjusted(iterationsAdjusted);
+        comparison.setOriginalIterations(originalIterations);
+        if (iterationsAdjusted) {
+            comparison.setAdjustmentMessage(String.format(
+                "Iterations were automatically adjusted from %d to %d to ensure statistical validity (minimum 30 required for paired t-test).",
+                originalIterations, request.getIterations()
+            ));
+        }
+
+        // Populate run metadata (top-level)
+        comparison.setRunId(java.util.UUID.randomUUID().toString());
+        comparison.setSeed(request.getSeed());
+        comparison.setConfigSnapshot(buildConfigSnapshot(request));
+        comparison.setDatasetId(computeDatasetId(request.getWorkloadPath()));
         
         logger.info("Comparison completed in {} ms", comparison.getTotalExecutionTime());
         
@@ -258,6 +286,19 @@ public class ComparisonService {
         test.setCohensD(cohensD);
         test.setSignificant(pValue < 0.05);
         
+        // Debug logging to trace potential serialization issues
+        if (logger.isDebugEnabled()) {
+            logger.debug("TTEST {} -> n={}, meanDiff={}, sd={}, se={}, t={}, df={}, p={}",
+                metricName, n,
+                String.format("%.6f", meanDiff),
+                String.format("%.6f", stdDev),
+                String.format("%.6f", stdError),
+                String.format("%.6f", tStatistic),
+                df,
+                String.format("%.6f", pValue)
+            );
+        }
+        
         // i fixed this supposed to find the better algo
         boolean isLowerBetter = isLowerBetterMetric(metricName);
         
@@ -370,5 +411,15 @@ public class ComparisonService {
     public boolean isSignificant(double[] sample1, double[] sample2, double alpha) {
         TTest tTest = new TTest();
         return tTest.pairedTTest(sample1, sample2, alpha);
+    }
+
+    private Map<String, Object> buildConfigSnapshot(SimulationRequest r) {
+        // Use centralized utility to avoid duplication
+        return ConfigurationSnapshotUtil.createDetailedSnapshot(r);
+    }
+
+    private String computeDatasetId(String path) {
+        // Delegate to utility class to avoid duplication
+        return ConfigurationSnapshotUtil.computeDatasetId(path);
     }
 }

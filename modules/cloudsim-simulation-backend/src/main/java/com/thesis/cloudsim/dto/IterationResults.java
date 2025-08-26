@@ -22,6 +22,12 @@ public class IterationResults {
     private Map<String, Double> stdDevMetrics;
     private long totalExecutionTime;
     private double successRate;
+
+    // run metadata
+    private String runId;
+    private Long seed;
+    private Map<String, Object> configSnapshot;
+    private String datasetId;
     
     /**
      * Get the best individual result based on fitness score

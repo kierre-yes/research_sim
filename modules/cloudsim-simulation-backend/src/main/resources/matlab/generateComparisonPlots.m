@@ -1,22 +1,39 @@
-function plotPaths = generateComparisonPlots(avgResponseTime, makespan, runId)
-    % Generate plots for comparing EACO and EPSO algorithms
-    % This version uses ONLY actual data from the simulation
-    
-    % Get data from base workspace (passed from Java)
-    resourceUtilization = evalin('base', 'resourceUtilization');
-    loadBalancePercentage = evalin('base', 'loadBalancePercentage');
-    imbalanceDegree = evalin('base', 'imbalanceDegree');
-    algorithmName = evalin('base', 'algorithmName');
-    throughput = evalin('base', 'throughput');
-    energyData = evalin('base', 'energyData');
+function plotPaths = generateComparisonPlots(avgResponseTime, makespan, runId, ...
+    resourceUtilization, imbalanceDegree, algorithmName, throughput, energyData, vmUtilData)
+    % Optimized plot generation with improved visuals and performance
+    % Version 5.0: Fixed visual issues and improved rendering speed
+    % This version only changes text colors to black across all plots.
 
-    % Define improved color palette (better for printing and readability)
-    mainColor = [0.2 0.6 0.8]; % Blue for primary metrics
-    contrastColor = [0.9 0.4 0.1]; % Orange for contrasts
-    successColor = [0.4 0.8 0.6]; % Green for positive metrics
-    warningColor = [0.9 0.6 0.4]; % Coral for energy/warning metrics
-    neutralColor = [0.5 0.5 0.5]; % Gray for grid lines
-    bgColor = 'white'; % White background for better readability
+    % Validate inputs
+    if nargin < 8
+        error('Missing required parameters');
+    end
+    if nargin < 9
+        vmUtilData = [];
+    end
+
+    % Set default font for better readability
+    set(0, 'DefaultAxesFontSize', 11);
+    set(0, 'DefaultTextFontSize', 11);
+    set(0, 'DefaultAxesFontName', 'Helvetica');
+    set(0, 'DefaultTextFontName', 'Helvetica');
+
+    % Force text to black globally (minimal change for the problem)
+    set(0,'DefaultAxesXColor','k');
+    set(0,'DefaultAxesYColor','k');
+    set(0,'DefaultAxesZColor','k');
+    set(0,'DefaultTextColor','k');
+
+    % Define professional color scheme
+    colors = struct();
+    colors.primary   = [46, 134, 171]/255;
+    colors.secondary = [162, 59, 114]/255;
+    colors.success   = [115, 194, 190]/255;
+    colors.warning   = [241, 143, 1]/255;
+    colors.danger    = [199, 62, 29]/255;
+    colors.neutral   = [107, 114, 128]/255;
+    colors.light     = [240, 240, 240]/255;
+    colors.dark      = [31, 41, 55]/255;
 
     % Create output directory
     outputDir = fullfile('plots', runId);
@@ -24,339 +41,210 @@ function plotPaths = generateComparisonPlots(avgResponseTime, makespan, runId)
         mkdir(outputDir);
     end
 
-    % Initialize plot paths
     plotPaths = {};
-    
-    % Check if VM utilization data exists
-    hasVmData = evalin('base', 'exist(''vmUtilData'', ''var'')');
-    if hasVmData
-        vmUtilData = evalin('base', 'vmUtilData');
+    plotMetadata = {};
+
+    %% Plot 1: Main Performance Metrics
+    fig1 = figure('Visible', 'off', 'Position', [100, 100, 800, 500]);
+    set(fig1, 'Color', 'white', 'PaperPositionMode', 'auto');
+
+    metricNames = {'Makespan', 'Response Time', 'Resource Util.', 'Energy Cons.', 'Load Balance'};
+    metricValues = [makespan; avgResponseTime; resourceUtilization; energyData / 1000; (1 - imbalanceDegree) * 100];
+
+    ax1 = axes('Position', [0.1, 0.15, 0.85, 0.75]);
+    b = bar(metricValues, 'FaceColor', 'flat');
+    b.CData = [colors.primary; colors.primary; colors.success; colors.warning; colors.success];
+
+    set(ax1, 'XTickLabel', metricNames, 'XTickLabelRotation', 0);
+    ylabel('Metric Values', 'FontWeight', 'bold', 'FontSize', 12, 'Color','k');
+    title(sprintf('%s Algorithm - Performance Metrics', algorithmName), 'FontSize', 14, 'FontWeight', 'bold', 'Interpreter', 'none', 'Color','k');
+    ax1.XColor = 'k'; ax1.YColor = 'k';
+
+    for i = 1:length(metricValues)
+        text(i, metricValues(i), sprintf('%.2f', metricValues(i)), 'HorizontalAlignment','center', 'VerticalAlignment','bottom', 'FontSize',10,'FontWeight','bold','Color','w');
     end
-    
-    %% Plot 1: Five Key Metrics Bar Chart with Improved Styling
-    figure('Visible', 'off', 'Position', [100, 100, 1000, 600], 'Color', bgColor);
-    
-    % The 5 key metrics from your research
-    metrics = categorical({'Makespan', 'Response Time', 'Resource Util.', 'Energy Cons.', 'Load Balance'});
-    metrics = reordercats(metrics, {'Makespan', 'Response Time', 'Resource Util.', 'Energy Cons.', 'Load Balance'});
-    
-    % Current algorithm values with proper units
-    values = [
-        makespan;
-        avgResponseTime;
-        resourceUtilization;
-        energyData / 1000; % Convert to kWh for better scale
-        (1 - imbalanceDegree) * 100 % Convert imbalance to balance percentage
-    ];
-    
-    % Create bar plot with different colors for each metric
-    b = bar(metrics, values);
-    b.FaceColor = 'flat';
-    % Assign different colors to each bar for better distinction
-    b.CData = [mainColor; mainColor; successColor; warningColor; successColor];
-    
-    % Add value labels on bars with units
-    units = {'s', 's', '%', 'kWh', '%'};
-    for i = 1:length(values)
-        text(b.XEndPoints(i), b.YEndPoints(i), ...
-            sprintf('%.2f %s', values(i), units{i}), ...
-            'HorizontalAlignment', 'center', 'VerticalAlignment', 'bottom', ...
-            'FontWeight', 'bold');
-    end
-    
-    % Improved formatting
-    ylabel('Metric Values', 'FontWeight', 'bold');
-    title(sprintf('%s Algorithm - Performance Metrics', algorithmName), ...
-        'FontSize', 14, 'FontWeight', 'bold');
-    grid on;
-    set(gca, 'FontSize', 11, 'GridAlpha', 0.3, 'GridLineStyle', ':');
-    
-    % Save plot
+
+    grid(ax1, 'on');
+    set(ax1, 'GridAlpha', 0.2, 'GridLineStyle', '--');
+    box off;
+
     plotPath1 = fullfile(outputDir, sprintf('%s_metrics.png', lower(algorithmName)));
-    saveas(gcf, plotPath1);
+    print(fig1, '-dpng', '-r120', plotPath1);
     plotPaths{end+1} = plotPath1;
-    close(gcf);
-    
+    close(fig1);
+
+    meta1 = struct('plotId', char(java.util.UUID.randomUUID.toString()), 'type', 'PERFORMANCE_METRICS', 'title', 'Main Performance Metrics', 'filename', plotPath1, 'dataPoints', struct('makespan', makespan, 'responseTime', avgResponseTime, 'resourceUtilization', resourceUtilization, 'energyConsumption', energyData, 'loadBalance', (1 - imbalanceDegree) * 100));
+    plotMetadata{end+1} = meta1;
+
     %% Plot 2: Detailed Performance Analysis
-    figure('Visible', 'off', 'Position', [100, 100, 1200, 800], 'Color', bgColor);
-    
-    % Subplot 1: Time Metrics
-    subplot(2, 2, 1);
-    timeMetrics = [makespan; avgResponseTime];
-    timeLabels = categorical({'Makespan', 'Avg Response Time'});
-    b1 = bar(timeLabels, timeMetrics);
-    b1.FaceColor = mainColor;
-    ylabel('Time (seconds)', 'FontWeight', 'bold');
-    title('Time-based Metrics');
-    grid on;
-    set(gca, 'GridAlpha', 0.3);
-    
-    % Add values on bars
-    text(b1.XEndPoints, b1.YEndPoints, string(round(timeMetrics, 2)), ...
-        'HorizontalAlignment', 'center', 'VerticalAlignment', 'bottom');
-    
-    % Subplot 2: Efficiency Metrics (using only actual data)
-    subplot(2, 2, 2);
-    effMetrics = [resourceUtilization; throughput];
-    effLabels = categorical({'Resource Util. (%)', 'Throughput (tasks/s)'});
-    b2 = bar(effLabels, effMetrics);
-    b2.FaceColor = successColor;
-    ylabel('Value', 'FontWeight', 'bold');
-    title('Efficiency Metrics');
-    grid on;
-    set(gca, 'GridAlpha', 0.3);
-    
-    % Add values on bars
-    text(b2.XEndPoints, b2.YEndPoints, string(round(effMetrics, 2)), ...
-        'HorizontalAlignment', 'center', 'VerticalAlignment', 'bottom');
-    
-    % Subplot 3: Energy Analysis
-    subplot(2, 2, 3);
-    % Convert to mWh for better scale
-    energyMetrics = [energyData*1000; (energyData/makespan)*1000; (energyData/(throughput*makespan))*1000];
-    energyLabels = categorical({'Total Energy', 'Energy/Time', 'Energy/Task'});
-    b3 = bar(energyLabels, energyMetrics);
-    b3.FaceColor = warningColor;
-    ylabel('Energy (mWh)', 'FontWeight', 'bold');
-    title('Energy Consumption Analysis');
-    grid on;
-    set(gca, 'GridAlpha', 0.3);
-    
-    % Subplot 4: Load Distribution
-    subplot(2, 2, 4);
-    balancePercentage = (1 - imbalanceDegree) * 100;
-    loadMetrics = [balancePercentage; 100 - balancePercentage];
-    p = pie(loadMetrics, {'Balanced Load', 'Imbalance'});
-    title('Load Distribution');
-    colormap([successColor; warningColor]);
-    
-    % Save plot
+    fig2 = figure('Visible', 'off', 'Position', [100, 100, 900, 600]);
+    set(fig2, 'Color', 'white');
+
+    try
+        t = tiledlayout(2, 2, 'TileSpacing', 'compact', 'Padding', 'compact');
+    catch
+    end
+
+    if exist('t', 'var'), axTime = nexttile; else, axTime = subplot(2, 2, 1); end
+    timeData = [avgResponseTime, makespan];
+    bar(timeData, 'FaceColor', colors.primary);
+    set(gca, 'XTickLabel', {'Avg Response Time', 'Makespan'});
+    ylabel('Time (seconds)', 'FontWeight', 'bold', 'Color','k');
+    title('Time-based Metrics', 'FontWeight', 'bold', 'Color','k');
+    axTime.XColor='k'; axTime.YColor='k';
+    for i = 1:length(timeData), text(i, timeData(i), sprintf('%.2f', timeData(i)), 'HorizontalAlignment','center','VerticalAlignment','bottom', 'FontSize',9,'FontWeight','bold','Color','w'); end
+    grid(axTime, 'on'); set(axTime, 'GridAlpha', 0.2);
+
+    if exist('t', 'var'), axEff = nexttile; else, axEff = subplot(2, 2, 2); end
+    effData = [resourceUtilization, throughput];
+    bar(effData, 'FaceColor', colors.success);
+    set(gca, 'XTickLabel', {'Resource Util. (%)', 'Throughput'});
+    ylabel('Value', 'FontWeight', 'bold', 'Color','k');
+    title('Efficiency Metrics', 'FontWeight', 'bold', 'Color','k');
+    axEff.XColor='k'; axEff.YColor='k';
+    for i = 1:length(effData), text(i, effData(i), sprintf('%.2f', effData(i)), 'HorizontalAlignment','center','VerticalAlignment','bottom', 'FontSize',9,'FontWeight','bold','Color','w'); end
+    grid(axEff, 'on'); set(axEff, 'GridAlpha', 0.2);
+
+    if exist('t', 'var'), axEnergy = nexttile; else, axEnergy = subplot(2, 2, 3); end
+    energyDisplay = energyData * 1000;
+    bar([energyDisplay, energyDisplay/makespan], 'FaceColor', colors.warning);
+    set(gca, 'XTickLabel', {'Total Energy', 'Energy/Time'});
+    ylabel('Energy (mWh)', 'FontWeight', 'bold', 'Color','k');
+    title('Energy Consumption Analysis', 'FontWeight', 'bold', 'Color','k');
+    axEnergy.XColor='k'; axEnergy.YColor='k';
+    grid(axEnergy, 'on'); set(axEnergy, 'GridAlpha', 0.2);
+
+    if exist('t', 'var'), axPie = nexttile; else, axPie = subplot(2, 2, 4); end
+    balancePercentage = max(0, min(100, (1 - imbalanceDegree) * 100));
+    p = pie([balancePercentage, 100 - balancePercentage]);
+    colormap([colors.success; colors.light]);
+    labels = {sprintf('Balanced\n%.1f%%', balancePercentage), sprintf('Imbalance\n%.1f%%', 100-balancePercentage)};
+    textObjs = findobj(p, 'Type', 'text');
+    for i = 1:length(textObjs), if i <= length(labels), set(textObjs(i), 'String', labels{i}, 'FontSize', 10, 'FontWeight', 'bold', 'Color','k'); end, end
+    title('Load Distribution', 'FontWeight', 'bold', 'Color','k');
+
+    if exist('t', 'var'), title(t, 'Detailed Performance Analysis', 'FontSize', 14, 'FontWeight', 'bold', 'Color','k'); else, sgtitle('Detailed Performance Analysis', 'FontSize', 14, 'FontWeight', 'bold', 'Color','k'); end
+
     plotPath2 = fullfile(outputDir, sprintf('%s_detailed.png', lower(algorithmName)));
-    saveas(gcf, plotPath2);
+    print(fig2, '-dpng', '-r120', plotPath2);
     plotPaths{end+1} = plotPath2;
-    close(gcf);
-    
-    %% Plot 3: VM Utilization (if data available)
-    if hasVmData && ~isempty(vmUtilData)
-        figure('Visible', 'off', 'Position', [100, 100, 1000, 600], 'Color', bgColor);
-        
-        % Extract CPU and RAM utilization
-        cpuUtil = vmUtilData(:, 1);
-        ramUtil = vmUtilData(:, 2);
-        vmIds = 1:length(cpuUtil);
-        
-        % Create grouped bar chart
-        subplot(2, 1, 1);
-        bar(vmIds, [cpuUtil, ramUtil]);
-        xlabel('VM ID', 'FontWeight', 'bold');
-        ylabel('Utilization (%)', 'FontWeight', 'bold');
-        title(sprintf('%s - VM Resource Utilization', algorithmName));
-        legend({'CPU', 'RAM'}, 'Location', 'northwest');
-        grid on;
-        ylim([0 100]);
-        set(gca, 'GridAlpha', 0.3);
-        
-        % Average utilization pie chart
-        subplot(2, 1, 2);
-        avgCpu = mean(cpuUtil);
-        avgRam = mean(ramUtil);
-        pie([avgCpu, avgRam, 100-avgCpu, 100-avgRam], ...
-            {sprintf('CPU Used (%.1f%%)', avgCpu), ...
-             sprintf('RAM Used (%.1f%%)', avgRam), ...
-             'CPU Free', 'RAM Free'});
-        title('Average Resource Utilization');
-        colormap([mainColor; contrastColor; 0.9 0.9 0.9; 0.9 0.9 0.9]);
-        
+    close(fig2);
+
+    meta2 = struct('plotId', char(java.util.UUID.randomUUID.toString()), 'type', 'DETAILED_ANALYSIS', 'title', 'Detailed Performance Analysis', 'filename', plotPath2, 'dataPoints', struct('responseTime', avgResponseTime, 'makespan', makespan, 'resourceUtilization', resourceUtilization, 'throughput', throughput, 'energyConsumption', energyData, 'loadBalance', (1 - imbalanceDegree) * 100));
+    plotMetadata{end+1} = meta2;
+
+    %% Plot 3: VM Utilization
+    if ~isempty(vmUtilData) && size(vmUtilData, 1) > 0
+        fig3 = figure('Visible', 'off', 'Position', [100, 100, 900, 500]);
+        set(fig3, 'Color', 'white');
+        cpuUtil = vmUtilData(:, 1); ramUtil = vmUtilData(:, 2); numVMs = min(length(cpuUtil), 50); vmIds = 1:numVMs;
+        ax3 = axes('Position', [0.08, 0.35, 0.88, 0.55]);
+        b = bar(vmIds, [cpuUtil(1:numVMs), ramUtil(1:numVMs)], 'grouped');
+        b(1).FaceColor = colors.primary; b(2).FaceColor = colors.warning;
+        xlabel('VM ID', 'FontWeight', 'bold', 'Color','k'); ylabel('Utilization (%)', 'FontWeight', 'bold', 'Color','k');
+        title(sprintf('%s - VM Resource Utilization', algorithmName), 'FontSize', 14, 'FontWeight', 'bold', 'Color','k');
+        legend({'CPU', 'RAM'}, 'Location', 'northeast', 'FontSize', 10, 'TextColor','k');
+        ylim([0 100]); grid(ax3, 'on'); set(ax3, 'GridAlpha', 0.2); ax3.XColor='k'; ax3.YColor='k';
+        ax4 = axes('Position', [0.08, 0.08, 0.88, 0.20]);
+        avgCpu = mean(cpuUtil); avgRam = mean(ramUtil);
+        axis off;
+        summaryText = sprintf(['Average Resource Utilization:\n', ...
+            'CPU: %.1f%% | RAM: %.1f%%\n', ...
+            'CPU Range: %.1f%% - %.1f%%\n', ...
+            'RAM Range: %.1f%% - %.1f%%'], avgCpu, avgRam, min(cpuUtil), max(cpuUtil), min(ramUtil), max(ramUtil));
+        text(0.5, 0.5, summaryText, 'HorizontalAlignment', 'center', 'VerticalAlignment', 'middle', 'FontSize', 11, 'FontWeight', 'bold', 'BackgroundColor', colors.light, 'EdgeColor', colors.neutral, 'Margin', 10, 'Color','k');
         plotPath3 = fullfile(outputDir, sprintf('%s_vm_utilization.png', lower(algorithmName)));
-        saveas(gcf, plotPath3);
+        print(fig3, '-dpng', '-r120', plotPath3);
         plotPaths{end+1} = plotPath3;
-        close(gcf);
+        close(fig3);
+        meta3 = struct('plotId', char(java.util.UUID.randomUUID.toString()), 'type', 'VM_UTILIZATION', 'title', 'VM Resource Utilization', 'filename', plotPath3, 'dataPoints', struct('avgCpuUtilization', avgCpu, 'avgRamUtilization', avgRam, 'cpuVariance', var(cpuUtil)));
+        plotMetadata{end+1} = meta3;
     end
-    
-    %% Plot 4: Energy Consumption Summary (ONLY ACTUAL DATA)
-    figure('Visible', 'off', 'Position', [100, 100, 1200, 600], 'Color', bgColor);
-    
-    % Show only actual energy data we have
-    subplot(1, 2, 1);
-    % Total energy consumption
-    energyMetrics = categorical({'Total Energy', 'Energy per Second'});
-    energyValues = [energyData; energyData/makespan];
-    b = bar(energyMetrics, energyValues);
-    b.FaceColor = warningColor;
-    ylabel('Energy (Wh)', 'FontWeight', 'bold');
-    title('Energy Consumption', 'FontWeight', 'bold');
-    
-    % Add value labels
-    for i = 1:length(energyValues)
-        text(b.XEndPoints(i), b.YEndPoints(i), ...
-            sprintf('%.2f Wh', energyValues(i)), ...
-            'HorizontalAlignment', 'center', 'VerticalAlignment', 'bottom', ...
-            'FontWeight', 'bold');
-    end
-    grid on;
-    set(gca, 'GridAlpha', 0.3);
-    
-    subplot(1, 2, 2);
-    % Energy efficiency metrics
-    efficiencyMetrics = categorical({'Energy per Task', 'Energy Efficiency'});
-    tasksCompleted = throughput * makespan; % Approximate number of tasks
-    efficiencyValues = [
-        energyData / tasksCompleted * 1000; % mWh per task
-        tasksCompleted / energyData % Tasks per Wh
-    ];
-    b2 = bar(efficiencyMetrics, efficiencyValues);
-    b2.FaceColor = successColor;
-    ylabel('Value', 'FontWeight', 'bold');
-    title('Energy Efficiency', 'FontWeight', 'bold');
-    
-    % Add value labels
-    units = {'mWh/task', 'tasks/Wh'};
-    for i = 1:length(efficiencyValues)
-        text(b2.XEndPoints(i), b2.YEndPoints(i), ...
-            sprintf('%.2f %s', efficiencyValues(i), units{i}), ...
-            'HorizontalAlignment', 'center', 'VerticalAlignment', 'bottom', ...
-            'FontWeight', 'bold');
-    end
-    grid on;
-    set(gca, 'GridAlpha', 0.3);
-    
+
+    %% Plot 4: Energy Analysis
+    fig4 = figure('Visible', 'off', 'Position', [100, 100, 800, 400]);
+    set(fig4, 'Color', 'white');
+    ax5 = axes('Position', [0.08, 0.15, 0.40, 0.70]);
+    energyData1000 = energyData * 1000;
+    energyBars = [energyData1000, energyData1000/makespan];
+    bar(energyBars, 'FaceColor', colors.warning);
+    set(gca, 'XTickLabel', {'Total', 'Per Second'});
+    ylabel('Energy (mWh)', 'FontWeight', 'bold', 'Color','k');
+    title('Energy Consumption', 'FontWeight', 'bold', 'Color','k');
+    ax5.XColor='k'; ax5.YColor='k';
+    for i = 1:length(energyBars), text(i, energyBars(i), sprintf('%.2f mWh', energyBars(i)), 'HorizontalAlignment', 'center', 'VerticalAlignment', 'bottom', 'FontSize', 9, 'FontWeight', 'bold', 'Color',[0.3 0.3 0.3]); end
+    grid(ax5, 'on'); set(ax5, 'GridAlpha', 0.2);
+    ax6 = axes('Position', [0.55, 0.15, 0.40, 0.70]);
+    tasksCompleted = throughput * makespan;
+    efficiencyMetrics = [tasksCompleted/energyData, energyData*1000/tasksCompleted];
+    bar(efficiencyMetrics, 'FaceColor', colors.success);
+    set(gca, 'XTickLabel', {'Tasks/Wh', 'mWh/Task'});
+    ylabel('Efficiency', 'FontWeight', 'bold', 'Color','k');
+    title('Energy Efficiency', 'FontWeight', 'bold', 'Color','k');
+    ax6.XColor='k'; ax6.YColor='k';
+    text(1, efficiencyMetrics(1), sprintf('%.1f tasks/Wh', efficiencyMetrics(1)), 'HorizontalAlignment', 'center', 'VerticalAlignment', 'bottom', 'FontSize', 9, 'FontWeight', 'bold', 'Color','k');
+    text(2, efficiencyMetrics(2), sprintf('%.2f mWh/task', efficiencyMetrics(2)), 'HorizontalAlignment', 'center', 'VerticalAlignment', 'bottom', 'FontSize', 9, 'FontWeight', 'bold', 'Color',[0.3 0.3 0.3]);
+    grid(ax6, 'on'); set(ax6, 'GridAlpha', 0.2);
+    annotation('textbox', [0 0.88 1 0.1], 'String', 'Energy Consumption Analysis', 'FontSize', 14, 'FontWeight', 'bold', 'HorizontalAlignment', 'center', 'EdgeColor', 'none', 'Color','k');
     plotPath4 = fullfile(outputDir, sprintf('%s_energy.png', lower(algorithmName)));
-    saveas(gcf, plotPath4);
+    print(fig4, '-dpng', '-r120', plotPath4);
     plotPaths{end+1} = plotPath4;
-    close(gcf);
-    
-    %% Plot 5: Performance Radar Chart (using actual data)
-    figure('Visible', 'off', 'Position', [100, 100, 800, 800], 'Color', bgColor);
-    
-    % Five core dimensions
+    close(fig4);
+    meta4 = struct('plotId', char(java.util.UUID.randomUUID.toString()), 'type', 'ENERGY_ANALYSIS', 'title', 'Energy Consumption Analysis', 'filename', plotPath4, 'dataPoints', struct('energyConsumption', energyData, 'makespan', makespan, 'throughput', throughput));
+    plotMetadata{end+1} = meta4;
+
+    %% Plot 5: Performance Radar Chart
+    fig5 = figure('Visible', 'off', 'Position', [100, 100, 600, 600]);
+    set(fig5, 'Color', 'white');
     dimensions = {'Makespan', 'Response Time', 'Resource Util.', 'Energy Eff.', 'Load Balance'};
     numDims = length(dimensions);
-    
-    % Current values
-    currentValues = [
-        makespan;
-        avgResponseTime;
-        resourceUtilization;
-        energyData;
-        (1 - imbalanceDegree) * 100
-    ];
-    
-    % Dynamic normalization based on actual data ranges
-    % Use percentile-based normalization for better comparison
     normalizedValues = zeros(numDims, 1);
-    
-    % For makespan and response time (lower is better)
-    normalizedValues(1) = max(0, min(1, 1 - (makespan - 10) / 190)); % Assuming 10-200s range
-    normalizedValues(2) = max(0, min(1, 1 - (avgResponseTime - 5) / 145)); % Assuming 5-150s range
-    
-    % For resource utilization (higher is better)
+    normalizedValues(1) = max(0, min(1, 1 - (makespan - 10) / 90));
+    normalizedValues(2) = max(0, min(1, 1 - (avgResponseTime - 5) / 45));
     normalizedValues(3) = resourceUtilization / 100;
-    
-    % For energy (lower is better)
-    normalizedValues(4) = max(0, min(1, 1 - (energyData - 50) / 450)); % Assuming 50-500Wh range
-    
-    % For load balance (higher is better)
-    normalizedValues(5) = currentValues(5) / 100;
-    
-    % Create radar chart
+    normalizedValues(4) = max(0, min(1, 1 - (energyData - 0.01) / 0.09));
+    normalizedValues(5) = (1 - imbalanceDegree);
+    normalizedValues = max(0, min(1, normalizedValues));
     angles = linspace(0, 2*pi, numDims+1);
     data = [normalizedValues; normalizedValues(1)]';
-    
-    % Create the radar plot
-    polarplot(angles, data, '-o', 'LineWidth', 2.5, 'MarkerSize', 8, ...
-              'Color', mainColor, 'MarkerFaceColor', mainColor);
+    polarplot(angles, data, '-o', 'LineWidth', 2.5, 'MarkerSize', 10, 'Color', colors.primary, 'MarkerFaceColor', colors.primary, 'MarkerEdgeColor', colors.primary);
     hold on;
-    
-    % Add reference circles
-    for r = 0.25:0.25:1
-        polarplot(angles, r*ones(size(angles)), ':', 'Color', neutralColor, 'LineWidth', 0.5);
-    end
-    
-    % Configure radar chart
+    referenceValues = [0.25, 0.5, 0.75, 1.0];
+    for r = referenceValues, polarplot(angles, r*ones(size(angles)), ':', 'Color', colors.neutral, 'LineWidth', 0.8); end
     ax = gca;
-    ax.ThetaGrid = 'on';
-    ax.RGrid = 'on';
-    ax.ThetaZeroLocation = 'top';
-    ax.ThetaDir = 'clockwise';
-    
-    % Set labels
+    ax.ThetaGrid = 'on'; ax.RGrid = 'on'; ax.ThetaZeroLocation = 'top'; ax.ThetaDir = 'clockwise';
+    ax.GridColor = colors.neutral; ax.GridAlpha = 0.3;
     ax.ThetaTick = (0:numDims-1) * 360/numDims;
     ax.ThetaTickLabel = dimensions;
-    ax.RLim = [0 1];
-    ax.RTick = [0.25 0.5 0.75 1];
-    ax.RTickLabel = {'25%', '50%', '75%', '100%'};
-    
-    % Add title
-    title(sprintf('%s - Performance Radar (Higher is Better)', algorithmName), ...
-        'FontSize', 14, 'FontWeight', 'bold');
-    
-    % Add value annotations
-    for i = 1:numDims
-        angle = angles(i);
-        value = normalizedValues(i);
-        actualValue = currentValues(i);
-        
-        % Position text slightly outside the data point
-        textRadius = value + 0.15;
-        if textRadius > 1.2
-            textRadius = 1.2;
-        end
-        
-        % Format the actual value with appropriate units
-        if i == 1 || i == 2
-            valueStr = sprintf('%.1fs', actualValue);
-        elseif i == 3 || i == 5
-            valueStr = sprintf('%.1f%%', actualValue);
-        else
-            valueStr = sprintf('%.1fWh', actualValue);
-        end
-        
-        % Add the text
-        text(angle, textRadius, valueStr, ...
-            'HorizontalAlignment', 'center', ...
-            'FontSize', 10, 'FontWeight', 'bold');
-    end
-    
+    ax.RLim = [0 1]; ax.RTick = referenceValues; ax.RTickLabel = {'25%', '50%', '75%', '100%'};
+    ax.ThetaColor = 'k'; ax.RColor = [0.3 0.3 0.3];
+    ax.FontSize = 10; ax.FontWeight = 'bold';
+    title(sprintf('%s - Performance Radar (Higher is Better)', algorithmName), 'FontSize', 14, 'FontWeight', 'bold', 'Units', 'normalized', 'Position', [0.5, 1.05, 0], 'Color','k');
     hold off;
-    
-    % Save plot
     plotPath5 = fullfile(outputDir, sprintf('%s_radar.png', lower(algorithmName)));
-    saveas(gcf, plotPath5);
+    print(fig5, '-dpng', '-r120', plotPath5);
     plotPaths{end+1} = plotPath5;
-    close(gcf);
-    
-    %% Create data structure for frontend
+    close(fig5);
+    meta5 = struct('plotId', char(java.util.UUID.randomUUID.toString()), 'type', 'RADAR_CHART', 'title', 'Performance Radar Chart', 'filename', plotPath5, 'dataPoints', struct('makespanNormalized', normalizedValues(1), 'responseTimeNormalized', normalizedValues(2), 'utilizationNormalized', normalizedValues(3), 'energyEfficiencyNormalized', normalizedValues(4), 'loadBalanceNormalized', normalizedValues(5)));
+    plotMetadata{end+1} = meta5;
+
+    %% Create JSON data structure
     plotData = struct();
-    
-    % Store metric values (using actual data only)
-    plotData.metrics = struct(...
-        'makespan', makespan, ...
-        'avgResponseTime', avgResponseTime, ...
-        'resourceUtilization', resourceUtilization, ...
-        'energyConsumption', energyData, ...
-        'loadBalance', (1 - imbalanceDegree) * 100, ...
-        'throughput', throughput ...
-    );
-    
-    % Store plot paths (crucial for frontend)
+    plotData.metrics = struct('makespan', makespan, 'avgResponseTime', avgResponseTime, 'resourceUtilization', resourceUtilization, 'energyConsumption', energyData, 'loadBalance', (1 - imbalanceDegree) * 100, 'throughput', throughput);
     plotData.plotPaths = plotPaths;
-    
-    % Algorithm info
     plotData.algorithm = algorithmName;
     plotData.simulationId = runId;
-    
-    % Convert to JSON and store in base workspace for Java to retrieve
+    plotData.plotMetadata = plotMetadata;
+
     plotJson = jsonencode(plotData);
     assignin('base', 'plotJson', plotJson);
-    
-    % Display summary
-    fprintf('\n=== %s Algorithm Results ===\n', algorithmName);
-    fprintf('Makespan: %.2f seconds\n', makespan);
-    fprintf('Avg Response Time: %.2f seconds\n', avgResponseTime);
-    fprintf('Resource Utilization: %.2f%%\n', resourceUtilization);
-    fprintf('Energy Consumption: %.2f Wh\n', energyData);
-    fprintf('Load Balance: %.2f%%\n', (1 - imbalanceDegree) * 100);
-    fprintf('Throughput: %.2f tasks/sec\n', throughput);
+
+    fprintf('=== %s Results ===\n', algorithmName);
     fprintf('Plots generated: %d\n', length(plotPaths));
-    fprintf('============================\n');
+    fprintf('====================\n');
+
+    set(0, 'DefaultAxesFontSize', 'remove');
+    set(0, 'DefaultTextFontSize', 'remove');
+    set(0, 'DefaultAxesFontName', 'remove');
+    set(0, 'DefaultTextFontName', 'remove');
 end

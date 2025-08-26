@@ -3,6 +3,7 @@ package com.thesis.cloudsim.dto;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import java.util.Map;
 
 /**
  * Results from comparing EACO and EPSO algorithms with statistical analysis
@@ -17,6 +18,15 @@ public class ComparisonResults {
     private String workloadName;
     private int iterations;
     private long totalExecutionTime;
+    private boolean iterationsAdjusted;
+    private int originalIterations;
+    private String adjustmentMessage;
+
+    // run metadata
+    private String runId;
+    private Long seed;
+    private Map<String, Object> configSnapshot;
+    private String datasetId;
     
     /**
      * Get summary for frontend display

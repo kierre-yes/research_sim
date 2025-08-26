@@ -85,6 +85,11 @@ public class IterationService {
         if (!results.isEmpty()) {
             calculateStatistics(iterationResults, results);
         }
+
+        iterationResults.setRunId(java.util.UUID.randomUUID().toString());
+        iterationResults.setSeed(request.getSeed());
+        iterationResults.setConfigSnapshot(buildConfigSnapshot(request));
+        iterationResults.setDatasetId(computeDatasetId(request.getWorkloadPath()));
         
         return iterationResults;
     }
@@ -147,5 +152,15 @@ public class IterationService {
     
     public void shutdown() {
         executorService.shutdown();
+    }
+
+    private Map<String, Object> buildConfigSnapshot(SimulationRequest r) {
+        // Use centralized utility to avoid duplication
+        return com.thesis.cloudsim.util.ConfigurationSnapshotUtil.createDetailedSnapshot(r);
+    }
+
+    private String computeDatasetId(String path) {
+        // Delegate to utility class to avoid duplication
+        return com.thesis.cloudsim.util.ConfigurationSnapshotUtil.computeDatasetId(path);
     }
 }

@@ -1,16 +1,22 @@
 package com.thesis.cloudsim.matlab;
 
 import com.mathworks.engine.MatlabEngine;
+import com.thesis.cloudsim.dto.PlotMetadata;
 import com.thesis.cloudsim.metrics.SimulationResults;
 import com.thesis.cloudsim.metrics.SimulationResults.VmUtilization;
 import com.thesis.cloudsim.dto.ProcessedResults;
+import com.thesis.cloudsim.dto.TTestResults;
+import com.thesis.cloudsim.service.PlotInterpretationService;
 import jakarta.annotation.PreDestroy;
 import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.annotation.Value;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 import java.util.UUID;
 import java.util.Map;
 import java.util.HashMap;
@@ -18,13 +24,21 @@ import java.util.concurrent.TimeUnit;
 
 @Service
 @SuppressWarnings("unchecked")
-public class MatlabIntegrationService {
+public class MatlabIntegrationService implements PlotGenerationEngine {
 
     private static final Logger logger = LoggerFactory.getLogger(MatlabIntegrationService.class);
     private static final ObjectMapper objectMapper = new ObjectMapper();
     private static final int MATLAB_TIMEOUT_SECONDS = 300; // 5 minutes timeout
+    private final PlotInterpretationService plotInterpretationService;
+    
+    @Value("${matlab.scripts.path:classpath:matlab}")
+    private String matlabScriptsPath;
     
     private volatile MatlabEngine engine;
+
+    public MatlabIntegrationService(PlotInterpretationService plotInterpretationService) {
+        this.plotInterpretationService = plotInterpretationService;
+    }
 
     // Try to connect lazily; no heavy work on context startup
     @org.springframework.context.event.EventListener(org.springframework.boot.context.event.ApplicationReadyEvent.class)
@@ -81,52 +95,54 @@ public class MatlabIntegrationService {
         logger.info("Processing results with MATLAB for algorithm: {}", algorithmName);
         
         try {
-            ensureEngine();
+            // Check if MATLAB engine is available
+            if (engine == null) {
+                logger.warn("MATLAB engine not available, attempting to initialize...");
+                try {
+                    ensureEngine();
+                } catch (Exception engineEx) {
+                    logger.error("Failed to initialize MATLAB engine: {}", engineEx.getMessage());
+                    // Return results without plots when MATLAB is unavailable
+                    return ProcessedResults.builder()
+                            .simulationId(results.getRunId() != null ? results.getRunId() : UUID.randomUUID().toString())
+                            .rawResults(results)
+                            .plotData(new HashMap<>())
+                            .plotMetadata(new ArrayList<>())
+                            .build();
+                }
+            }
             
-            // Convert Java results to MATLAB-compatible structure
-            String runId = UUID.randomUUID().toString();
-            logger.debug("Generated run ID: {}", runId);
+            String runId = results.getRunId();
+            if (runId == null || runId.isEmpty()) {
+                runId = UUID.randomUUID().toString();
+            }
             
-            // Create MATLAB struct with all results data
-            logger.debug("Putting variables into MATLAB workspace...");
             engine.putVariable("runId", runId);
             engine.putVariable("algorithmName", algorithmName);
             
-            // Pass summary metrics
-            logger.debug("Creating MATLAB results structure...");
             engine.eval("results = struct();");
             engine.eval("results.summary = struct();");
             
-            logger.debug("Passing summary metrics to MATLAB...");
             double makespan = results.getSummary().getMakespan();
             double responseTime = results.getSummary().getResponseTime();
             double utilization = results.getSummary().getResourceUtilization();
             double loadBalance = results.getSummary().getLoadBalance();
             
-            // Convert load balance to percentage (100 - normalized imbalance)
-            // The raw loadBalance is actually an imbalance measure (lower is better)
-            // So we convert it to a balance percentage where higher is better
             double balancePercentage = (1.0 - loadBalance) * 100.0;
             double clampedLoadBalance = Math.max(0.0, Math.min(100.0, balancePercentage));
-            
-            logger.debug("Makespan: {}, Response Time: {}, Utilization: {}, Load Balance: {}% (imbalance: {})", 
-                    makespan, responseTime, utilization, clampedLoadBalance, loadBalance);
             
             engine.putVariable("makespan", makespan);
             engine.putVariable("avgResponseTime", responseTime);
             engine.putVariable("resourceUtilization", utilization);
             engine.putVariable("loadBalancePercentage", clampedLoadBalance);
-            engine.putVariable("imbalanceDegree", loadBalance); // Add the raw imbalance degree for MATLAB
+            engine.putVariable("imbalanceDegree", loadBalance);
             engine.eval("results.summary.makespan = makespan;");
             engine.eval("results.summary.averageResponseTime = avgResponseTime;");
             engine.eval("results.summary.resourceUtilization = resourceUtilization;");
             engine.eval("results.summary.loadBalancePercentage = loadBalancePercentage;");
             engine.eval("results.summary.imbalanceDegree = imbalanceDegree;");
             
-            // Calculate additional metrics
-            // Assume 100% success rate for now (all cloudlets finished successfully)
             double successRate = 100.0;
-            // Estimate throughput as cloudlets per second (assuming ~1000 cloudlets)
             double throughput = results.getSummary().getMakespan() > 0 ? 
                 1000.0 / results.getSummary().getMakespan() : 0.0;
                 
@@ -135,13 +151,10 @@ public class MatlabIntegrationService {
             engine.eval("results.summary.successRate = successRate;");
             engine.eval("results.summary.throughput = throughput;");
             
-            // Pass energy consumption
             engine.putVariable("energyData", results.getEnergyConsumption());
             engine.eval("results.energyConsumption = energyData;");
             
-            // Pass VM utilization data if available
             if (results.getVmUtilization() != null && !results.getVmUtilization().isEmpty()) {
-                // Convert VM utilization list to arrays for MATLAB
                 double[][] vmUtilMatrix = new double[results.getVmUtilization().size()][2];
                 for (int i = 0; i < results.getVmUtilization().size(); i++) {
                     VmUtilization vm = results.getVmUtilization().get(i);
@@ -150,120 +163,190 @@ public class MatlabIntegrationService {
                 }
                 engine.putVariable("vmUtilData", vmUtilMatrix);
                 engine.eval("results.vmUtilization = vmUtilData;");
+            } else {
+                // If no VM utilization data, create empty matrix
+                engine.eval("vmUtilData = [];");
             }
             
-            // Use the simpler generateComparisonPlots for now
-            logger.info("Calling MATLAB generateComparisonPlots function...");
             try {
-                // First check if the script exists
+                // Resolve and add MATLAB scripts path
+                String matlabPath = resolveMatlabScriptsPath();
+                logger.debug("Adding MATLAB path: {}", matlabPath);
+                // I escape backslashes and quotes for Windows paths so MATLAB doesn't get confused
+                String escapedPath = matlabPath.replace("\\", "/");
+                engine.putVariable("scriptPath", escapedPath);
+                engine.eval("addpath(scriptPath);");
+                
+                // Check if script exists after adding path
                 engine.eval("exist('generateComparisonPlots', 'file')");
-                Object scriptExists = engine.getVariable("ans");
-                logger.debug("generateComparisonPlots exists check result: {}", scriptExists);
+                Object scriptExistsAfter = engine.getVariable("ans");
+                if (scriptExistsAfter == null || ((Double) scriptExistsAfter) == 0) {
+                    logger.error("MATLAB script generateComparisonPlots.m not found at: {}", matlabPath);
+                    // Return results without plots when script is missing
+                    return ProcessedResults.builder()
+                            .simulationId(runId)
+                            .rawResults(results)
+                            .plotData(new HashMap<>())
+                            .plotMetadata(new ArrayList<>())
+                            .build();
+                }
                 
-                // Add the script path if needed
-                engine.eval("addpath('src/main/resources/matlab');");
-                logger.debug("Added MATLAB script path");
+                // Clear any previous error state
+                engine.eval("clear lasterror; lastwarn('');");
                 
-                engine.eval("plotPaths = generateComparisonPlots(avgResponseTime, makespan, runId);");
-                logger.info("MATLAB function executed successfully");
+                // Pass string parameters as MATLAB variables to avoid escaping issues
+                engine.putVariable("runIdParam", runId);
+                engine.putVariable("algorithmNameParam", algorithmName);
                 
-                // If we have iteration data, perform paired t-test analysis
-                /*
-                if (results.getIterationMetrics() != null && !results.getIterationMetrics().isEmpty()) {
-                    logger.info("Performing paired t-test statistical analysis...");
-                    try {
-                        // Pass iteration metrics for statistical analysis
-                        engine.putVariable("iterationCount", results.getIterationMetrics().size());
-                        
-                        // Check if paired t-test script exists
-                        engine.eval("exist('pairedTTest', 'file')");
-                        Object ttestExists = engine.getVariable("ans");
-                        
-                        if (ttestExists != null && ((Double) ttestExists) > 0) {
-                            logger.debug("Paired t-test function found, executing statistical analysis...");
-                            // This would be called when comparing EACO vs EPSO results
-                            // The actual comparison happens at the controller level
-                        } else {
-                            logger.debug("Paired t-test function not found, skipping statistical analysis");
-                        }
-                    } catch (Exception statsEx) {
-                        logger.warn("Statistical analysis skipped: {}", statsEx.getMessage());
+                // Put all numeric inputs as MATLAB variables to avoid String.format issues
+                engine.putVariable("avgResponseTime", responseTime);
+                engine.putVariable("mkspan", makespan);
+                engine.putVariable("resUtil", utilization);
+                engine.putVariable("imbalance", loadBalance);
+                engine.putVariable("thru", throughput);
+                // energyData and vmUtilData were already set earlier
+                
+                // Initialize outputs
+                engine.eval("plotJsonGenerated = false; plotPaths = {};");
+                
+                // Safer try/catch inside MATLAB without fprintf or quoted strings
+                logger.debug("Executing MATLAB generateComparisonPlots with workspace variables");
+                engine.eval(
+                    "try;" +
+                    "  plotPaths = generateComparisonPlots(avgResponseTime, mkspan, runIdParam, resUtil, imbalance, algorithmNameParam, thru, energyData, vmUtilData);" +
+                    "  plotJsonGenerated = true;" +
+                    "catch ME;" +
+                    "  disp(ME.message);" +
+                    "  for i = 1:length(ME.stack)" +
+                    "    disp([ME.stack(i).name ' ' ME.stack(i).file ' line ' num2str(ME.stack(i).line)]);" +
+                    "  end;" +
+                    "  plotPaths = {}; plotJsonGenerated = false; plotJson = '{}';" +
+                    "end"
+                );
+                
+                // Check if the MATLAB script executed successfully
+                Object plotJsonGenerated = engine.getVariable("plotJsonGenerated");
+                boolean scriptSuccess = false;
+                if (plotJsonGenerated != null) {
+                    // MATLAB returns logical as double (0 or 1)
+                    if (plotJsonGenerated instanceof Double) {
+                        scriptSuccess = ((Double) plotJsonGenerated) > 0;
+                    } else if (plotJsonGenerated instanceof Boolean) {
+                        scriptSuccess = (Boolean) plotJsonGenerated;
                     }
                 }
-                */
+                
+                if (!scriptSuccess) {
+                    // Check for warnings or errors
+                    engine.eval("[lastMsg, lastId] = lastwarn;");
+                    String lastWarning = (String) engine.getVariable("lastMsg");
+                    if (lastWarning != null && !lastWarning.isEmpty()) {
+                        logger.warn("MATLAB warning: {}", lastWarning);
+                    }
+                    logger.error("MATLAB script did not generate plot JSON successfully");
+                }
+
             } catch (Exception matlabEx) {
-                logger.error("Error executing MATLAB script: {}", matlabEx.getMessage());
-                logger.error("MATLAB execution stack trace:", matlabEx);
-                throw matlabEx;
+                logger.error("Error executing MATLAB script: {}", matlabEx.getMessage(), matlabEx);
+                // Return results without plots on MATLAB execution error
+                return ProcessedResults.builder()
+                        .simulationId(runId)
+                        .rawResults(results)
+                        .plotData(new HashMap<>())
+                        .plotMetadata(new ArrayList<>())
+                        .build();
             }
             
-            // Retrieve JSON string with chart-ready structure
-            logger.debug("Retrieving plot JSON from MATLAB...");
             String json = null;
             try {
-                json = engine.getVariable("plotJson");
-                logger.debug("Retrieved JSON: {}", json != null ? "(non-null)" : "null");
+                // First check if plotJson variable exists
+                engine.eval("exist('plotJson', 'var')");
+                Object plotJsonExists = engine.getVariable("ans");
+                if (plotJsonExists != null && ((Double) plotJsonExists) > 0) {
+                    json = (String) engine.getVariable("plotJson");
+                    logger.debug("Successfully retrieved plotJson from MATLAB");
+                } else {
+                    logger.warn("plotJson variable not found in MATLAB workspace, creating empty JSON");
+                    json = "{}";
+                }
             } catch (Exception varEx) {
                 logger.error("Error retrieving plotJson variable: {}", varEx.getMessage());
-                logger.warn("Attempting to check if plotJson exists in workspace...");
-                engine.eval("exist('plotJson', 'var')");
-                Object exists = engine.getVariable("ans");
-                logger.debug("plotJson exists: {}", exists);
-                throw varEx;
+                json = "{}";
             }
             
-            // Reuse ObjectMapper instance
             java.util.Map<String,Object> plotMap = null;
             if (json != null) {
                 try {
                     plotMap = objectMapper
                             .readValue(json, new com.fasterxml.jackson.core.type.TypeReference<java.util.Map<String,Object>>() {});
-                    logger.debug("Successfully parsed plot JSON");
                 } catch (Exception parseEx) {
                     logger.error("Error parsing JSON from MATLAB: {}", parseEx.getMessage());
-                    logger.debug("JSON content: {}", json);
                     throw parseEx;
                 }
             } else {
-                logger.warn("plotJson is null, creating empty plot map");
                 plotMap = new java.util.HashMap<>();
+            }
+
+            // --- Plot Metadata ---
+            List<PlotMetadata> plotMetadataList = new ArrayList<>();
+            List<String> plotFiles = (List<String>) plotMap.get("plotPaths");
+
+            if (plotFiles != null) {
+                for (String plotFile : plotFiles) {
+                    PlotMetadata.PlotType plotType = PlotMetadata.PlotType.fromFilename(plotFile);
+
+                    Map<String, Object> dataPoints = new HashMap<>();
+                    dataPoints.put("makespan", results.getSummary().getMakespan());
+                    dataPoints.put("responseTime", results.getSummary().getResponseTime());
+                    dataPoints.put("resourceUtilization", results.getSummary().getResourceUtilization());
+                    dataPoints.put("energyConsumption", results.getSummary().getEnergyConsumption());
+                    dataPoints.put("loadBalance", results.getSummary().getLoadBalance());
+
+                    PlotMetadata.PlotInterpretation interpretation = plotInterpretationService.interpretPlot(plotType, dataPoints, algorithmName);
+
+                    PlotMetadata metadata = PlotMetadata.builder()
+                            .plotId(java.util.UUID.randomUUID().toString())
+                            .type(plotType)
+                            .title(plotType.getDescription())
+                            .filename(plotFile)
+                            .dataPoints(dataPoints)
+                            .interpretation(interpretation)
+                            .build();
+
+                    plotMetadataList.add(metadata);
+                }
             }
 
             ProcessedResults processedResults = ProcessedResults.builder()
                     .simulationId(runId)
                     .plotData(plotMap)
                     .rawResults(results)
+                    .plotMetadata(plotMetadataList)
                     .build();
             
-            logger.info("Successfully processed results with MATLAB for run ID: {}", runId);
             return processedResults;
             
         } catch (Exception e) {
-            logger.error("MATLAB processing failed: {}", e.getMessage());
-            logger.error("Full stack trace:", e);
-            
-            // Check if it's a specific MATLAB error
-            if (e.getMessage() != null && e.getMessage().contains("MATLAB")) {
-                throw new RuntimeException("MATLAB processing error: " + e.getMessage(), e);
-            } else {
-                throw new RuntimeException("MATLAB processing failed", e);
-            }
+            logger.error("MATLAB processing failed: ", e);
+            // Return basic results without plots when any error occurs
+            String fallbackRunId = results.getRunId() != null ? results.getRunId() : UUID.randomUUID().toString();
+            return ProcessedResults.builder()
+                    .simulationId(fallbackRunId)
+                    .rawResults(results)
+                    .plotData(new HashMap<>())
+                    .plotMetadata(new ArrayList<>())
+                    .build();
         }
     }
 
-    /**
-     * Generate statistical t-test visualization plots
-     */
     public Map<String, Object> generateTTestPlots(com.thesis.cloudsim.dto.TTestResults tTestResults) {
         logger.info("Generating t-test visualization plots with MATLAB...");
         
         try {
             ensureEngine();
             
-            // Pass t-test results to MATLAB
             Map<String, Object> plotPaths = new HashMap<>();
             
-            // Convert metric tests to MATLAB arrays
             int numMetrics = tTestResults.getMetricTests().size();
             double[] pValues = new double[numMetrics];
             double[] tStatistics = new double[numMetrics];
@@ -280,21 +363,17 @@ public class MatlabIntegrationService {
                 i++;
             }
             
-            // Pass arrays to MATLAB
             engine.putVariable("pValues", pValues);
             engine.putVariable("tStatistics", tStatistics);
             engine.putVariable("cohensD", cohensD);
             engine.putVariable("alpha", tTestResults.getAlpha());
             engine.putVariable("overallWinner", tTestResults.getOverallWinner());
             
-            // Check if pairedTTest.m exists and call it
             engine.eval("addpath('src/main/resources/matlab');");
             engine.eval("exist('pairedTTest', 'file')");
             Object scriptExists = engine.getVariable("ans");
             
             if (scriptExists != null && ((Double) scriptExists) > 0) {
-                logger.debug("Calling MATLAB pairedTTest function for visualization...");
-                // The pairedTTest.m will generate and save plots
                 plotPaths.put("statisticalAnalysis", "plots/statistical_analysis/paired_ttest.png");
             } else {
                 logger.warn("pairedTTest.m not found, skipping t-test visualization");
@@ -308,12 +387,32 @@ public class MatlabIntegrationService {
         }
     }
     
+    private String resolveMatlabScriptsPath() {
+        if (matlabScriptsPath.startsWith("classpath:")) {
+            String resourcePath = matlabScriptsPath.substring("classpath:".length());
+            String currentDir = System.getProperty("user.dir");
+            return currentDir + "/src/main/resources/" + resourcePath;
+        } else if (new java.io.File(matlabScriptsPath).isAbsolute()) {
+            return matlabScriptsPath;
+        } else {
+            String currentDir = System.getProperty("user.dir");
+            return currentDir + "/" + matlabScriptsPath;
+        }
+    }
+    
+    @Override
+    public void shutdown() {
+        close();
+    }
+    
     @PreDestroy
     public void close() {
         if (engine != null) {
             try {
                 engine.disconnect();
-            } catch (Exception ignored) {}
+            } catch (Exception e) {
+                logger.warn("Error disconnecting MATLAB engine: {}", e.getMessage());
+            }
         }
     }
 }
