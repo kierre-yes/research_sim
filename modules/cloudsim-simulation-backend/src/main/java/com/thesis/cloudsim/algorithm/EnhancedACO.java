@@ -18,10 +18,10 @@ import static com.thesis.cloudsim.algorithm.AlgorithmMetricUtils.*;
  */
 public class EnhancedACO implements ISchedulingAlgorithm {
     
-    private static final String ALGORITHM_NAME = "EACO";
+    private static final String ALGORITHM_NAME = "EACO"; //i set in uppercase the constant identifier
     private final Map<String, Double> metrics; //avoid mutating the internal state
     //drives stochastic parts
-    private final Random random;
+    private final Random random; // for stochastic decisions
     
     // main aco components
     private List<Ant> ants;
@@ -29,14 +29,14 @@ public class EnhancedACO implements ISchedulingAlgorithm {
     private double[][] heuristicMatrix;  // this will store heuristic values based on execution time and resources
     private Map<Cloudlet, Vm> bestSolution;
     private double bestFitness;
-    private int currentIteration;
+    private int currentIteration; //sched solution
     
     //convergence metrics so that we can stop early when the algorithm stabilizes
     private double previousBestFitness;
     private int stagnationCounter;
     private double previousPheromoneConvergence;  // I track pheromone variance to detect convergence
     
-    // entities
+    // entities also to detect if converge in similar values
     private List<Cloudlet> cloudlets;
     private List<Vm> vms;
     private AlgorithmParameters parameters;
@@ -47,7 +47,7 @@ public class EnhancedACO implements ISchedulingAlgorithm {
          * apply the new random instance
          */
         this.random = new Random();
-        this.ants = new ArrayList<>();
+        this.ants = new ArrayList<>(); //unseeded
         this.bestFitness = Double.MAX_VALUE;
         this.currentIteration = 0;
         this.previousBestFitness = Double.MAX_VALUE;
@@ -60,7 +60,7 @@ public class EnhancedACO implements ISchedulingAlgorithm {
      */
     public EnhancedACO(long seed) {
         this.metrics = new HashMap<>();
-        this.random = new Random(seed);
+        this.random = new Random(seed); //seeded
         this.ants = new ArrayList<>();
         this.bestFitness = Double.MAX_VALUE;
         this.currentIteration = 0;
@@ -69,7 +69,7 @@ public class EnhancedACO implements ISchedulingAlgorithm {
         this.previousPheromoneConvergence = Double.MAX_VALUE;
     }
     
-    @Override
+    @Override //scheduling sequence
     public Map<Cloudlet, Vm> schedule(List<Cloudlet> cloudlets, List<Vm> vms, AlgorithmParameters parameters) {
         // I create defensive copies so that the algorithm doesn't modify the input lists
         this.cloudlets = new ArrayList<>(cloudlets);
@@ -81,9 +81,9 @@ public class EnhancedACO implements ISchedulingAlgorithm {
         
         // aco loop - ants build solutions, deposit pheromones, and learn from each other
         for (currentIteration = 0; currentIteration < parameters.getInt(AlgorithmParameters.MAX_ITERATIONS); currentIteration++) {
-            constructSolutions();     // Each ant builds a complete scheduling solution
-            updateBestSolution();     // Track the best solution found so far
-            updatePheromones();       // Update pheromone trails based on solution quality
+            constructSolutions();     // each ant builds a complete scheduling solution
+            updateBestSolution();     // track the best solution found so far
+            updatePheromones();       // update pheromone trails based on solution quality
             
             // I check for early stopping based on fitness stagnation or pheromone convergence
             if (shouldStopEarly()) {
@@ -94,16 +94,17 @@ public class EnhancedACO implements ISchedulingAlgorithm {
                 break;
             }
         }
-        
+        //after to break then compute the results
         calculateMetrics(bestSolution);
-        
+        //copy to avoid external mutation
         return new HashMap<>(bestSolution);
     }
-    
+    //to init   
     private void initializeMatrices() {
+        //sizes
         int cloudletCount = cloudlets.size();
         int vmCount = vms.size();
-        
+        //i and j represents pheromone
         pheromoneMatrix = new double[cloudletCount][vmCount];
         double initialPheromone = parameters.getDouble(AlgorithmParameters.INITIAL_PHEROMONE);
         
@@ -113,7 +114,7 @@ public class EnhancedACO implements ISchedulingAlgorithm {
             for (int j = 0; j < vmCount; j++) {
                 // I apply 5% random variation to break symmetry in initial pheromone levels
                 double variation = 0.95 + (random.nextDouble() * 0.1);
-                pheromoneMatrix[i][j] = initialPheromone * variation;
+                pheromoneMatrix[i][j] = initialPheromone * variation; 
             }
         }
         
@@ -147,8 +148,10 @@ public class EnhancedACO implements ISchedulingAlgorithm {
     }
     
     private void initializeAnts() {
-        int populationSize = parameters.getInt(AlgorithmParameters.POPULATION_SIZE);
+        int populationSize = parameters.getInt(AlgorithmParameters.POPULATION_SIZE); //colony size
+        //i clear previous runs 
         ants.clear();
+        
         
         // I create a colony of ants, each capable of building a complete solution
         for (int i = 0; i < populationSize; i++) {
@@ -169,7 +172,7 @@ public class EnhancedACO implements ISchedulingAlgorithm {
     }
     
     private void updateBestSolution() {
-        double oldBestFitness = bestFitness;
+        double oldBestFitness = bestFitness; //store curr best
         
         // I check all ants to see if any found a better solution than our current best
         for (Ant ant : ants) {

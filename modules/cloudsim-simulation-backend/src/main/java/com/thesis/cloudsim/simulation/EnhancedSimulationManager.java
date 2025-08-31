@@ -31,6 +31,7 @@ public class EnhancedSimulationManager {
     
     private static final Logger logger = LoggerFactory.getLogger(EnhancedSimulationManager.class);
     private static final Object SIMULATION_LOCK = new Object();
+    private static volatile boolean isCancelled = false;
     private final ISchedulingAlgorithm algorithm;
     private final SimulationRequest request;
 
@@ -39,30 +40,59 @@ public class EnhancedSimulationManager {
         this.request = request;
     }
 
-    /*
-     * I run the main simulation and return metrics. I've refactored this method
-     * to extract complex initialization and collection logic into separate methods
-     * for better readability and maintainability.
-     */
     public SimulationResults run() throws IOException {
         synchronized (SIMULATION_LOCK) {
+            isCancelled = false; 
+            
             resetPreviousSimulation();
+            checkCancellation();
+            
             initializeCloudSim();
+            checkCancellation();
             
             CustomSchedulingBroker broker = createBroker();
             int brokerId = broker.getId();
+            checkCancellation();
             
             Datacenter datacenter = setupDatacenter();
             List<Vm> vmList = createVirtualMachines(brokerId);
+            checkCancellation();
             
             logDebugInfo(datacenter, brokerId);
             
             List<Cloudlet> cloudlets = prepareWorkload(brokerId);
+            checkCancellation();
+            
             submitResources(broker, vmList, cloudlets);
+            checkCancellation();
             
             CloudSim.startSimulation();
+            checkCancellation();
             
             return collectResults(broker, vmList, datacenter, cloudlets);
+        }
+    }
+    
+    /**
+     * Static method to cancel any running simulation
+     */
+    public static void cancelSimulation() {
+        isCancelled = true;
+        logger.info("Simulation cancellation requested");
+        try {
+            CloudSim.terminateSimulation();
+        } catch (Exception e) {
+            logger.debug("Error terminating simulation: {}", e.getMessage());
+        }
+    }
+    
+    /**
+     * Check if simulation has been cancelled and throw exception if so
+     */
+    private void checkCancellation() throws IOException {
+        if (isCancelled) {
+            logger.info("Simulation cancelled by user");
+            throw new IOException("Simulation cancelled by user");
         }
     }
     

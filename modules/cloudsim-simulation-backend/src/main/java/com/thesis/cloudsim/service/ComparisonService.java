@@ -24,6 +24,7 @@ import org.apache.commons.math3.stat.descriptive.DescriptiveStatistics;
 public class ComparisonService {
     
     private static final Logger logger = LoggerFactory.getLogger(ComparisonService.class);
+    private static volatile boolean isCancelled = false;
     
     @Autowired
     private IterationService iterationService;
@@ -47,6 +48,8 @@ public class ComparisonService {
      * Run comparison between EACO and EPSO with statistical analysis
      */
     public ComparisonResults runComparison(SimulationRequest request) {
+        isCancelled = false;
+        
         logger.info("Starting algorithm comparison with {} iterations", request.getIterations());
         
         long startTime = System.currentTimeMillis();
@@ -63,7 +66,20 @@ public class ComparisonService {
         // Run iterations for both algorithms
         logger.info("Running EACO iterations...");
         request.setOptimizationAlgorithm("EACO");
+        
+        // Check cancellation before running EACO
+        if (isCancelled) {
+            logger.info("Comparison cancelled before EACO iterations");
+            throw new RuntimeException("Comparison cancelled by user");
+        }
+        
         IterationResults eacoResults = iterationService.runIterations(eaco, request);
+        
+        // Check cancellation before running EPSO
+        if (isCancelled) {
+            logger.info("Comparison cancelled after EACO, before EPSO iterations");
+            throw new RuntimeException("Comparison cancelled by user");
+        }
         
         logger.info("Running EPSO iterations...");
         request.setOptimizationAlgorithm("EPSO");
@@ -351,6 +367,14 @@ public class ComparisonService {
         }
         
         return test;
+    }
+    
+    /**
+     * Request cancellation of ongoing comparison
+     */
+    public static void requestCancellation() {
+        isCancelled = true;
+        logger.info("Cancellation requested for ComparisonService");
     }
     
     /**

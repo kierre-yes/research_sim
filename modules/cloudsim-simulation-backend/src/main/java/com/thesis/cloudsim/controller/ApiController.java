@@ -33,6 +33,7 @@ import java.util.Map;
 import java.util.HashMap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpStatus;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -587,6 +588,38 @@ long maxBytes = 1024L * 1024 * 1024; // 1 GB
         schema.put("descriptions", desc);
         schema.put("notes", "Headers are case-insensitive. Extra columns will be ignored. 'task_length' is accepted as an alias for 'length'. 'arrival_time' is optional.");
         return ResponseEntity.ok(schema);
+    }
+    
+    @PostMapping("/cancel")
+    @Operation(summary = "Cancel ongoing simulations", 
+              description = "Request cancellation of any running simulations, iterations, or comparisons")
+    @ApiResponse(responseCode = "200", description = "Cancellation requested successfully")
+    public ResponseEntity<Map<String, Object>> cancelSimulation() {
+        logger.info("Received simulation cancellation request via ApiController");
+        
+        try {
+            EnhancedSimulationManager.cancelSimulation();
+            
+            // Also signal cancellation to services
+            iterationService.requestCancellation();
+            comparisonService.requestCancellation();
+            
+            Map<String, Object> response = new HashMap<>();
+            response.put("message", "Simulation cancellation requested");
+            response.put("status", "cancelled");
+            response.put("timestamp", System.currentTimeMillis());
+            response.put("controller", "ApiController");
+            
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            logger.error("Error during cancellation", e);
+            
+            Map<String, Object> response = new HashMap<>();
+            response.put("error", "Failed to cancel simulation");
+            response.put("message", e.getMessage());
+            
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
+        }
     }
 
     private void validateCsvHeaders(Path csvPath) throws IOException {

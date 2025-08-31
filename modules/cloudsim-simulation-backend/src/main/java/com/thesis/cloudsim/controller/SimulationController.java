@@ -19,6 +19,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.validation.annotation.Validated;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import com.thesis.cloudsim.simulation.EnhancedSimulationManager;
 
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
@@ -265,5 +266,29 @@ public class SimulationController {
     
     private Map<String, Object> createConfigSnapshot(SimulationRequest request) {
         return ConfigurationSnapshotUtil.createBasicSnapshot(request);
+    }
+    
+    @PostMapping("/cancel")
+    public ResponseEntity<Map<String, Object>> cancelSimulation() {
+        logger.info("Received simulation cancellation request");
+        
+        try {
+            EnhancedSimulationManager.cancelSimulation();
+            
+            Map<String, Object> response = new HashMap<>();
+            response.put("message", "Simulation cancellation requested");
+            response.put("status", "cancelled");
+            response.put("timestamp", System.currentTimeMillis());
+            
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            logger.error("Error during cancellation", e);
+            
+            Map<String, Object> response = new HashMap<>();
+            response.put("error", "Failed to cancel simulation");
+            response.put("message", e.getMessage());
+            
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
+        }
     }
 }

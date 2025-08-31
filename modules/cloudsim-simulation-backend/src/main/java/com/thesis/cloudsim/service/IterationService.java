@@ -23,8 +23,11 @@ public class IterationService {
     
     private static final Logger logger = LoggerFactory.getLogger(IterationService.class);
     private final ExecutorService executorService = Executors.newFixedThreadPool(4);
+    private static volatile boolean isCancelled = false;
     
     public IterationResults runIterations(ISchedulingAlgorithm algorithm, SimulationRequest request) {
+        isCancelled = false;
+        
         long startTime = System.currentTimeMillis();
         int iterations = Math.max(1, Math.min(100, request.getIterations())); // only to hundred
         
@@ -33,15 +36,29 @@ public class IterationService {
         List<SimulationResults> results = new ArrayList<>();
         List<CompletableFuture<SimulationResults>> futures = new ArrayList<>();
         
-        // Run simulations in parallel (max 4 at a time)
         for (int i = 0; i < iterations; i++) {
+            // check cancellation before starting new iteration
+            if (isCancelled) {
+                logger.info("Iterations cancelled before iteration {}", i + 1);
+                break;
+            }
+            
             final int iteration = i;
             CompletableFuture<SimulationResults> future = CompletableFuture.supplyAsync(() -> {
                 try {
+                    if (isCancelled) {
+                        logger.debug("Iteration {} cancelled", iteration + 1);
+                        return null;
+                    }
+                    
                     logger.debug("Running iteration {} of {}", iteration + 1, iterations);
                     EnhancedSimulationManager manager = new EnhancedSimulationManager(algorithm, request);
                     return manager.run();
                 } catch (Exception e) {
+                    if (isCancelled) {
+                        logger.debug("Iteration {} cancelled during execution", iteration + 1);
+                        return null;
+                    }
                     logger.error("Error in iteration {}: {}", iteration + 1, e.getMessage());
                     return null;
                 }
@@ -57,14 +74,29 @@ public class IterationService {
         try {
             allFutures.join();
             
+            // Check for cancellation before collecting results
+            if (isCancelled) {
+                logger.info("Iterations cancelled, cancelling remaining futures");
+                for (CompletableFuture<SimulationResults> future : futures) {
+                    future.cancel(true);
+                }
+                throw new RuntimeException("Iterations cancelled by user");
+            }
+            
             // Collect 
             for (CompletableFuture<SimulationResults> future : futures) {
+                if (isCancelled) break; // Final check during collection
+                
                 SimulationResults result = future.get();
                 if (result != null) {
                     results.add(result);
                 }
             }
         } catch (Exception e) {
+            if (isCancelled) {
+                logger.info("Iterations cancelled during execution");
+                throw new RuntimeException("Iterations cancelled by user");
+            }
             logger.error("Error waiting for iterations to complete", e);
         }
         
@@ -152,6 +184,14 @@ public class IterationService {
     
     public void shutdown() {
         executorService.shutdown();
+    }
+    
+    /**
+     * Request cancellation of ongoing iterations
+     */
+    public static void requestCancellation() {
+        isCancelled = true;
+        logger.info("Cancellation requested for IterationService");
     }
 
     private Map<String, Object> buildConfigSnapshot(SimulationRequest r) {
