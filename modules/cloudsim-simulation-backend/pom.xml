@@ -28,7 +28,7 @@
         <lombok.version>1.18.34</lombok.version>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <!-- Native DLL directories for MATLAB Engine (semicolon-separated) -->
-        <matlab.library.path>C:\Program Files\MATLAB\R2025a\bin\win64;C:\Program Files\MATLAB\R2025a\extern\engines\java\win64</matlab.library.path>
+        <matlab.library.path>C:\Program Files\MATLAB\R2025a\bin\win64;C:\Program Files\MATLAB\R2025a\extern\engines\java\win64;C:\Program Files\MATLAB\R2025a\extern\bin\win64</matlab.library.path>
     </properties>
 
 

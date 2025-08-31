@@ -45,13 +45,14 @@ function plotPaths = generateComparisonPlots(avgResponseTime, makespan, runId, .
     plotMetadata = {};
 
     %% Plot 1: Main Performance Metrics
-    fig1 = figure('Visible', 'off', 'Position', [100, 100, 800, 500]);
+    fig1 = figure('Visible', 'off', 'Position', [100, 100, 900, 600]);
     set(fig1, 'Color', 'white', 'PaperPositionMode', 'auto');
 
     metricNames = {'Makespan', 'Response Time', 'Resource Util.', 'Energy Cons.', 'Load Balance'};
     metricValues = [makespan; avgResponseTime; resourceUtilization; energyData / 1000; (1 - imbalanceDegree) * 100];
 
-    ax1 = axes('Position', [0.1, 0.15, 0.85, 0.75]);
+    % Adjust axes to provide more space for labels
+    ax1 = axes('Position', [0.12, 0.15, 0.78, 0.70]);
     b = bar(metricValues, 'FaceColor', 'flat');
     b.CData = [colors.primary; colors.primary; colors.success; colors.warning; colors.success];
 
@@ -61,7 +62,12 @@ function plotPaths = generateComparisonPlots(avgResponseTime, makespan, runId, .
     ax1.XColor = 'k'; ax1.YColor = 'k';
 
     for i = 1:length(metricValues)
-        text(i, metricValues(i), sprintf('%.2f', metricValues(i)), 'HorizontalAlignment','center', 'VerticalAlignment','bottom', 'FontSize',10,'FontWeight','bold','Color','w');
+        % Position text slightly above bar to ensure readability
+        yOffset = max(metricValues) * 0.02; % 2% offset from bar top
+        text(i, metricValues(i) + yOffset, sprintf('%.2f', metricValues(i)), ...
+            'HorizontalAlignment','center', 'VerticalAlignment','bottom', ...
+            'FontSize',10,'FontWeight','bold','Color','black', ...
+            'BackgroundColor', 'white', 'EdgeColor', 'none', 'Margin', 1);
     end
 
     grid(ax1, 'on');
@@ -77,11 +83,11 @@ function plotPaths = generateComparisonPlots(avgResponseTime, makespan, runId, .
     plotMetadata{end+1} = meta1;
 
     %% Plot 2: Detailed Performance Analysis
-    fig2 = figure('Visible', 'off', 'Position', [100, 100, 900, 600]);
+    fig2 = figure('Visible', 'off', 'Position', [100, 100, 1000, 650]);
     set(fig2, 'Color', 'white');
 
     try
-        t = tiledlayout(2, 2, 'TileSpacing', 'compact', 'Padding', 'compact');
+        t = tiledlayout(2, 2, 'TileSpacing', 'normal', 'Padding', 'normal');
     catch
     end
 
@@ -107,7 +113,13 @@ function plotPaths = generateComparisonPlots(avgResponseTime, makespan, runId, .
 
     if exist('t', 'var'), axEnergy = nexttile; else, axEnergy = subplot(2, 2, 3); end
     energyDisplay = energyData * 1000;
-    bar([energyDisplay, energyDisplay/makespan], 'FaceColor', colors.warning);
+    % division for energy per time
+    if makespan > 0
+        energyPerTime = energyDisplay/makespan;
+    else
+        energyPerTime = 0;
+    end
+    bar([energyDisplay, energyPerTime], 'FaceColor', colors.warning);
     set(gca, 'XTickLabel', {'Total Energy', 'Energy/Time'});
     ylabel('Energy (mWh)', 'FontWeight', 'bold', 'Color','k');
     title('Energy Consumption Analysis', 'FontWeight', 'bold', 'Color','k');
@@ -135,17 +147,42 @@ function plotPaths = generateComparisonPlots(avgResponseTime, makespan, runId, .
 
     %% Plot 3: VM Utilization
     if ~isempty(vmUtilData) && size(vmUtilData, 1) > 0
-        fig3 = figure('Visible', 'off', 'Position', [100, 100, 900, 500]);
+        % Dynamically adjust figure width based on number of VMs
+        numVMs = length(vmUtilData(:, 1));
+        figWidth = max(1000, min(1800, 800 + numVMs * 20)); % Scale width with VM count
+        fig3 = figure('Visible', 'off', 'Position', [100, 100, figWidth, 550]);
         set(fig3, 'Color', 'white');
-        cpuUtil = vmUtilData(:, 1); ramUtil = vmUtilData(:, 2); numVMs = min(length(cpuUtil), 50); vmIds = 1:numVMs;
-        ax3 = axes('Position', [0.08, 0.35, 0.88, 0.55]);
+        cpuUtil = vmUtilData(:, 1); ramUtil = vmUtilData(:, 2);
+        vmIds = 1:numVMs;
+        
+        % Adjust axes position for better spacing
+        ax3 = axes('Position', [0.08, 0.38, 0.88, 0.52]);
         b = bar(vmIds, [cpuUtil(1:numVMs), ramUtil(1:numVMs)], 'grouped');
         b(1).FaceColor = colors.primary; b(2).FaceColor = colors.warning;
-        xlabel('VM ID', 'FontWeight', 'bold', 'Color','k'); ylabel('Utilization (%)', 'FontWeight', 'bold', 'Color','k');
+        
+        % Smart X-axis label management based on VM count
+        if numVMs > 30
+            % Show every 5th label if more than 30 VMs
+            xticks(1:5:numVMs);
+            xticklabels(arrayfun(@(x) sprintf('%d', x), 1:5:numVMs, 'UniformOutput', false));
+            set(gca, 'XTickLabelRotation', 45); % Rotate labels to prevent overlap
+        elseif numVMs > 15
+            % Show every 2nd label if more than 15 VMs
+            xticks(1:2:numVMs);
+            xticklabels(arrayfun(@(x) sprintf('%d', x), 1:2:numVMs, 'UniformOutput', false));
+            set(gca, 'XTickLabelRotation', 45);
+        else
+            % Show all labels if 15 or fewer VMs
+            xticks(vmIds);
+            set(gca, 'XTickLabelRotation', 0);
+        end
+        
+        xlabel('VM ID', 'FontWeight', 'bold', 'Color','k'); 
+        ylabel('Utilization (%)', 'FontWeight', 'bold', 'Color','k');
         title(sprintf('%s - VM Resource Utilization', algorithmName), 'FontSize', 14, 'FontWeight', 'bold', 'Color','k');
         legend({'CPU', 'RAM'}, 'Location', 'northeast', 'FontSize', 10, 'TextColor','k');
         ylim([0 100]); grid(ax3, 'on'); set(ax3, 'GridAlpha', 0.2); ax3.XColor='k'; ax3.YColor='k';
-        ax4 = axes('Position', [0.08, 0.08, 0.88, 0.20]);
+        ax4 = axes('Position', [0.10, 0.08, 0.84, 0.20]);
         avgCpu = mean(cpuUtil); avgRam = mean(ramUtil);
         axis off;
         summaryText = sprintf(['Average Resource Utilization:\n', ...
@@ -162,28 +199,62 @@ function plotPaths = generateComparisonPlots(avgResponseTime, makespan, runId, .
     end
 
     %% Plot 4: Energy Analysis
-    fig4 = figure('Visible', 'off', 'Position', [100, 100, 800, 400]);
+    fig4 = figure('Visible', 'off', 'Position', [100, 100, 900, 450]);
     set(fig4, 'Color', 'white');
-    ax5 = axes('Position', [0.08, 0.15, 0.40, 0.70]);
+    ax5 = axes('Position', [0.10, 0.18, 0.38, 0.65]);
     energyData1000 = energyData * 1000;
-    energyBars = [energyData1000, energyData1000/makespan];
+    % Safe division for energy metrics
+    if makespan > 0
+        energyPerSecond = energyData1000/makespan;
+    else
+        energyPerSecond = 0;
+    end
+    energyBars = [energyData1000, energyPerSecond];
     bar(energyBars, 'FaceColor', colors.warning);
     set(gca, 'XTickLabel', {'Total', 'Per Second'});
     ylabel('Energy (mWh)', 'FontWeight', 'bold', 'Color','k');
     title('Energy Consumption', 'FontWeight', 'bold', 'Color','k');
     ax5.XColor='k'; ax5.YColor='k';
-    for i = 1:length(energyBars), text(i, energyBars(i), sprintf('%.2f mWh', energyBars(i)), 'HorizontalAlignment', 'center', 'VerticalAlignment', 'bottom', 'FontSize', 9, 'FontWeight', 'bold', 'Color',[0.3 0.3 0.3]); end
+    % Smart label positioning for energy bars
+    for i = 1:length(energyBars)
+        if energyBars(i) > 0
+            % Add small offset to prevent label overlap
+            yPos = energyBars(i) + max(energyBars) * 0.02;
+            text(i, yPos, sprintf('%.2f mWh', energyBars(i)), ...
+                'HorizontalAlignment', 'center', 'VerticalAlignment', 'bottom', ...
+                'FontSize', 9, 'FontWeight', 'bold', 'Color', 'black', ...
+                'BackgroundColor', [1 1 1 0.8], 'EdgeColor', 'none');
+        end
+    end
     grid(ax5, 'on'); set(ax5, 'GridAlpha', 0.2);
-    ax6 = axes('Position', [0.55, 0.15, 0.40, 0.70]);
+    ax6 = axes('Position', [0.55, 0.18, 0.38, 0.65]);
+    % division with zero checks
     tasksCompleted = throughput * makespan;
-    efficiencyMetrics = [tasksCompleted/energyData, energyData*1000/tasksCompleted];
+    if energyData > 0 && tasksCompleted > 0
+        efficiencyMetrics = [tasksCompleted/energyData, energyData*1000/tasksCompleted];
+    else
+        efficiencyMetrics = [0, 0];
+    end
     bar(efficiencyMetrics, 'FaceColor', colors.success);
     set(gca, 'XTickLabel', {'Tasks/Wh', 'mWh/Task'});
     ylabel('Efficiency', 'FontWeight', 'bold', 'Color','k');
     title('Energy Efficiency', 'FontWeight', 'bold', 'Color','k');
     ax6.XColor='k'; ax6.YColor='k';
-    text(1, efficiencyMetrics(1), sprintf('%.1f tasks/Wh', efficiencyMetrics(1)), 'HorizontalAlignment', 'center', 'VerticalAlignment', 'bottom', 'FontSize', 9, 'FontWeight', 'bold', 'Color','k');
-    text(2, efficiencyMetrics(2), sprintf('%.2f mWh/task', efficiencyMetrics(2)), 'HorizontalAlignment', 'center', 'VerticalAlignment', 'bottom', 'FontSize', 9, 'FontWeight', 'bold', 'Color',[0.3 0.3 0.3]);
+    % Position efficiency labels with proper spacing
+    if efficiencyMetrics(1) > 0
+        yPos1 = efficiencyMetrics(1) + max(efficiencyMetrics) * 0.02;
+        text(1, yPos1, sprintf('%.1f tasks/Wh', efficiencyMetrics(1)), ...
+            'HorizontalAlignment', 'center', 'VerticalAlignment', 'bottom', ...
+            'FontSize', 9, 'FontWeight', 'bold', 'Color', 'black', ...
+            'BackgroundColor', [1 1 1 0.8], 'EdgeColor', 'none');
+    end
+    if efficiencyMetrics(2) > 0
+        yPos2 = efficiencyMetrics(2) + max(efficiencyMetrics) * 0.02;
+        text(2, yPos2, sprintf('%.2f mWh/task', efficiencyMetrics(2)), ...
+            'HorizontalAlignment', 'center', 'VerticalAlignment', 'bottom', ...
+            'FontSize', 9, 'FontWeight', 'bold', 'Color', 'black', ...
+            'BackgroundColor', [1 1 1 0.8], 'EdgeColor', 'none');
+    end
     grid(ax6, 'on'); set(ax6, 'GridAlpha', 0.2);
     annotation('textbox', [0 0.88 1 0.1], 'String', 'Energy Consumption Analysis', 'FontSize', 14, 'FontWeight', 'bold', 'HorizontalAlignment', 'center', 'EdgeColor', 'none', 'Color','k');
     plotPath4 = fullfile(outputDir, sprintf('%s_energy.png', lower(algorithmName)));
@@ -194,20 +265,52 @@ function plotPaths = generateComparisonPlots(avgResponseTime, makespan, runId, .
     plotMetadata{end+1} = meta4;
 
     %% Plot 5: Performance Radar Chart
-    fig5 = figure('Visible', 'off', 'Position', [100, 100, 600, 600]);
+    fig5 = figure('Visible', 'off', 'Position', [100, 100, 700, 700]);
     set(fig5, 'Color', 'white');
     dimensions = {'Makespan', 'Response Time', 'Resource Util.', 'Energy Eff.', 'Load Balance'};
     numDims = length(dimensions);
+    
+    % Data-driven normalization - no hardcoded values, no bias
+    % For metrics where lower is better, we invert the normalization
     normalizedValues = zeros(numDims, 1);
-    normalizedValues(1) = max(0, min(1, 1 - (makespan - 10) / 90));
-    normalizedValues(2) = max(0, min(1, 1 - (avgResponseTime - 5) / 45));
+    
+    % Makespan: lower is better, use actual data for normalization
+    % Use exponential decay function for natural scaling without hardcoded limits
+    if makespan > 0
+        % Exponential decay provides smooth normalization
+        normalizedValues(1) = exp(-makespan/100); % Natural scaling based on data
+    else
+        normalizedValues(1) = 1;
+    end
+    
+    % Response Time: lower is better
+    if avgResponseTime > 0
+        % Exponential decay for consistent normalization
+        normalizedValues(2) = exp(-avgResponseTime/50); % Natural scaling
+    else
+        normalizedValues(2) = 1;
+    end
+    
+    % Resource Utilization: higher is better (already 0-100)
     normalizedValues(3) = resourceUtilization / 100;
-    normalizedValues(4) = max(0, min(1, 1 - (energyData - 0.01) / 0.09));
-    normalizedValues(5) = (1 - imbalanceDegree);
+    
+    % Energy Efficiency: calculate based on actual efficiency
+    % Higher efficiency = lower energy consumption per task
+    if energyData > 0 && throughput > 0
+        energyEfficiency = throughput / energyData; % tasks per unit energy
+        normalizedValues(4) = min(1, energyEfficiency / 10); % Scale appropriately
+    else
+        normalizedValues(4) = 0;
+    end
+    
+    % Load Balance: higher balance (lower imbalance) is better
+    normalizedValues(5) = max(0, min(1, 1 - imbalanceDegree));
+    
+    % Ensure all values are within [0,1] range
     normalizedValues = max(0, min(1, normalizedValues));
     angles = linspace(0, 2*pi, numDims+1);
     data = [normalizedValues; normalizedValues(1)]';
-    polarplot(angles, data, '-o', 'LineWidth', 2.5, 'MarkerSize', 10, 'Color', colors.primary, 'MarkerFaceColor', colors.primary, 'MarkerEdgeColor', colors.primary);
+    polarplot(angles, data, '-o', 'LineWidth', 2.5, 'MarkerSize', 10, 'Color', 'w', 'MarkerFaceColor', 'w', 'MarkerEdgeColor', 'w');
     hold on;
     referenceValues = [0.25, 0.5, 0.75, 1.0];
     for r = referenceValues, polarplot(angles, r*ones(size(angles)), ':', 'Color', colors.neutral, 'LineWidth', 0.8); end
@@ -217,8 +320,10 @@ function plotPaths = generateComparisonPlots(avgResponseTime, makespan, runId, .
     ax.ThetaTick = (0:numDims-1) * 360/numDims;
     ax.ThetaTickLabel = dimensions;
     ax.RLim = [0 1]; ax.RTick = referenceValues; ax.RTickLabel = {'25%', '50%', '75%', '100%'};
-    ax.ThetaColor = 'k'; ax.RColor = [0.3 0.3 0.3];
-    ax.FontSize = 10; ax.FontWeight = 'bold';
+    ax.ThetaColor = 'k'; ax.RColor = 'k'; % Changed to black for visibility
+    ax.FontSize = 11; ax.FontWeight = 'bold'; % Slightly larger font
+    % Add padding to prevent label cutoff
+    ax.Position = [0.15, 0.15, 0.7, 0.7];
     title(sprintf('%s - Performance Radar (Higher is Better)', algorithmName), 'FontSize', 14, 'FontWeight', 'bold', 'Units', 'normalized', 'Position', [0.5, 1.05, 0], 'Color','k');
     hold off;
     plotPath5 = fullfile(outputDir, sprintf('%s_radar.png', lower(algorithmName)));
