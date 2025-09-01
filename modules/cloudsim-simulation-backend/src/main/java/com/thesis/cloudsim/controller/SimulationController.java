@@ -127,13 +127,17 @@ public class SimulationController {
         }
         
         try {
+            long startTime = System.currentTimeMillis();
             SimulationResults raw = manager.run();
+            long executionTime = System.currentTimeMillis() - startTime;
             
             raw.setRunId(java.util.UUID.randomUUID().toString());
             raw.setSeed(request.getSeed() != null ? request.getSeed() : System.currentTimeMillis());
             raw.setConfigSnapshot(createConfigSnapshot(request));
             raw.setDatasetId(request.getWorkloadPath() != null ? 
                 "custom-" + request.getWorkloadPath().hashCode() : "synthetic");
+            
+            logger.info("Simulation completed in {} ms", executionTime);
             
             String algorithmName = request.getOptimizationAlgorithm() != null ? request.getOptimizationAlgorithm() : "CloudSim";
             ProcessedResults out = matlabService.processResults(raw, algorithmName);
@@ -143,6 +147,7 @@ public class SimulationController {
             Map<String, Object> response = new HashMap<>();
             response.put("processedResults", out);
             response.put("analysis", analysis);
+            response.put("executionTimeMs", executionTime);
 
             return ResponseEntity.ok(response);
         } catch (Exception e) {

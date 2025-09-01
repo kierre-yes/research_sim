@@ -18,8 +18,8 @@ public class AsyncConfig {
         ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
         
         // configure thread pool for plot generation
-        executor.setCorePoolSize(2); // minimum threads
-        executor.setMaxPoolSize(4); // maximum threads
+        executor.setCorePoolSize(4); // minimum threads
+        executor.setMaxPoolSize(8); // maximum threads
         executor.setQueueCapacity(10); // queue for pending tasks
         executor.setThreadNamePrefix("PlotGen-");
         

@@ -22,7 +22,7 @@ import java.util.stream.Collectors;
 public class IterationService {
     
     private static final Logger logger = LoggerFactory.getLogger(IterationService.class);
-    private final ExecutorService executorService = Executors.newFixedThreadPool(4);
+    private final ExecutorService executorService = Executors.newFixedThreadPool(8);
     private static volatile boolean isCancelled = false;
     
     public IterationResults runIterations(ISchedulingAlgorithm algorithm, SimulationRequest request) {
