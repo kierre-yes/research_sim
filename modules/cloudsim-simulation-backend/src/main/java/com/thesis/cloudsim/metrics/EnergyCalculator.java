@@ -53,7 +53,7 @@ public class EnergyCalculator {
             totalEnergy += hostEnergy;
         }
         
-        logger.debug("Total energy consumption: {} kWh", totalEnergy);
+        logger.debug("Total energy consumption: {} Wh", totalEnergy);
         return totalEnergy;
     }
     
@@ -119,10 +119,9 @@ public class EnergyCalculator {
         double hostUtilization = calculateHostUtilization(host, hostVms);
         double avgPower = calculateAveragePower(hostUtilization, hostVms.size());
         
-        // I convert to kWh
-        double hostEnergy = (avgPower * makespan) / (1000.0 * 3600.0);
+        double hostEnergy = (avgPower * makespan) / 3600.0;
         
-        logger.debug("Host {} energy: {} kWh (utilization: {}, power: {} W)", 
+        logger.debug("Host {} energy: {} Wh (utilization: {}, power: {} W)", 
                     host.getId(), hostEnergy, hostUtilization, avgPower);
         
         return hostEnergy;

@@ -25,7 +25,8 @@ public class SimulationResults {
     public static class Summary {
         private double makespan;
         private double energyConsumption;
-        private double loadBalance;
+        private double loadBalance; 
+        private double loadImbalance; 
         private double resourceUtilization;
         private double responseTime;
         private double fitness;

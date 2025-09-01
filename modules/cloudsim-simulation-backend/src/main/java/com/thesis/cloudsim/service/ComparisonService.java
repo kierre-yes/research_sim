@@ -391,7 +391,8 @@ public class ComparisonService {
                     case "energyConsumption": return summary.getEnergyConsumption();
                     case "resourceUtilization": return summary.getResourceUtilization();
                     case "responseTime": return summary.getResponseTime();
-                    case "loadBalance": return summary.getLoadBalance();
+                    case "loadBalance": 
+                        return summary.getLoadImbalance() != 0.0 ? summary.getLoadImbalance() : summary.getLoadBalance();
                     default: return 0.0;
                 }
             })
