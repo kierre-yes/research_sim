@@ -101,12 +101,16 @@ public class AnalysisInterpretationService {
             getUtilizationRecommendation(summary.getResourceUtilization())
         ));
         
+        int taskCount = results.getSchedulingLog() != null ? 
+            (int) results.getSchedulingLog().stream().filter(entry -> "assignment".equals(entry.getType())).count() : 1;
+        double energyPerTask = taskCount > 0 ? summary.getEnergyConsumption() / taskCount : summary.getEnergyConsumption();
+        
         interpretations.put("energyConsumption", String.format(
             "Total energy consumption of %.2f Wh reflects %s energy efficiency. " +
-            "This translates to approximately %.4f Wh per task.",
+            "This translates to approximately %.4f Wh per task (%d tasks completed).",
             summary.getEnergyConsumption(),
             categorizeEnergyEfficiency(summary.getEnergyConsumption(), summary.getMakespan()),
-            summary.getEnergyConsumption() / 1000.0
+            energyPerTask, taskCount
         ));
         
         interpretations.put("responseTime", String.format(
@@ -132,8 +136,11 @@ public class AnalysisInterpretationService {
         Map<String, String> analysis = new HashMap<>();
         SimulationResults.Summary summary = results.getSummary();
         
-        double throughput = 1000.0 / summary.getMakespan();
-        double energyPerTask = summary.getEnergyConsumption() / 1000.0;
+        int taskCount = results.getSchedulingLog() != null ? 
+            (int) results.getSchedulingLog().stream().filter(entry -> "assignment".equals(entry.getType())).count() : 1000;
+        
+        double throughput = taskCount / summary.getMakespan();
+        double energyPerTask = taskCount > 0 ? summary.getEnergyConsumption() / taskCount : summary.getEnergyConsumption();
         double utilizationEfficiency = summary.getResourceUtilization() / 100.0;
         
         analysis.put("throughput", String.format(

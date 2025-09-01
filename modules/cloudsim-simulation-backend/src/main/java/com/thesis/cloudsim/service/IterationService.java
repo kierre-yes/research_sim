@@ -135,6 +135,7 @@ public class IterationService {
                 metricsMap.computeIfAbsent("makespan", k -> new ArrayList<>()).add(summary.getMakespan());
                 metricsMap.computeIfAbsent("energyConsumption", k -> new ArrayList<>()).add(summary.getEnergyConsumption());
                 metricsMap.computeIfAbsent("loadBalance", k -> new ArrayList<>()).add(summary.getLoadBalance());
+                metricsMap.computeIfAbsent("loadImbalance", k -> new ArrayList<>()).add(summary.getLoadImbalance());
                 metricsMap.computeIfAbsent("resourceUtilization", k -> new ArrayList<>()).add(summary.getResourceUtilization());
                 metricsMap.computeIfAbsent("responseTime", k -> new ArrayList<>()).add(summary.getResponseTime());
                 metricsMap.computeIfAbsent("fitness", k -> new ArrayList<>()).add(summary.getFitness());

@@ -473,6 +473,9 @@ public class MetricsCalculator {
     }
     
     public SimulationResults buildResults(double fitness, String runId, Long seed, Map<String, Object> configSnapshot, String datasetId) {
+        double rawLoadImbalance = calculateLoadImbalance();
+        double energyWh = calculateEnergyConsumption();
+        
         return SimulationResults.builder()
                 .runId(runId)
                 .seed(seed)
@@ -481,16 +484,17 @@ public class MetricsCalculator {
                 .summary(SimulationResults.Summary.builder()
                         .responseTime(calculateAverageResponseTime())
                         .makespan(calculateMakespan())
-                        .loadBalance(AlgorithmMetricUtils.normalise("loadBalance", calculateLoadImbalance(), finishedCloudlets, vms))
+                        .loadBalance(AlgorithmMetricUtils.normalise("loadBalance", rawLoadImbalance, finishedCloudlets, vms))
+                        .loadImbalance(rawLoadImbalance) 
                         .resourceUtilization(calculateResourceUtilization())
                         .totalCost(calculateTotalCost())
                         .costEfficiency(calculateCostEfficiency())
-                        .energyConsumption(calculateEnergyConsumption())
+                        .energyConsumption(energyWh)
                         .fitness(fitness)
                         .build())
                 .vmUtilization(calculateVmUtilization())
                 .schedulingLog(generateSchedulingLog())
-                .energyConsumption(calculateEnergyConsumption())
+                .energyConsumption(energyWh)
                 .build();
     }
 
