@@ -94,10 +94,10 @@ public class EnhancedACO implements ISchedulingAlgorithm {
                 break;
             }
         }
-        //after to break then compute the results
-        calculateMetrics(bestSolution);
+        Map<Cloudlet, Vm> balancedSolution = applyLoadBalancing(bestSolution);
+        calculateMetrics(balancedSolution);
         //copy to avoid external mutation
-        return new HashMap<>(bestSolution);
+        return new HashMap<>(balancedSolution);
     }
     //to init   
     private void initializeMatrices() {
@@ -524,5 +524,97 @@ public class EnhancedACO implements ISchedulingAlgorithm {
             return "Pheromone convergence (variance=" + String.format("%.6f", currentConvergence) + ")";
         }
         return "Unknown";
+    }
+    
+
+    private Map<Cloudlet, Vm> applyLoadBalancing(Map<Cloudlet, Vm> originalSchedule) {
+        if (originalSchedule == null || cloudlets.size() <= vms.size()) {
+            return originalSchedule;
+        }
+        
+        Map<Cloudlet, Vm> balancedSchedule = new HashMap<>(originalSchedule);
+        LoadBalancer balancer = new LoadBalancer(balancedSchedule, vms.size());
+        
+        // Record current assignments
+        for (Map.Entry<Cloudlet, Vm> entry : balancedSchedule.entrySet()) {
+            int vmIndex = vms.indexOf(entry.getValue());
+            if (vmIndex >= 0) {
+                balancer.recordAssignment(vmIndex);
+            }
+        }
+        
+        balancer.balance();
+        
+        return balancedSchedule;
+    }
+    
+    /**
+     * Load balancer implementation identical to EPSO for fair comparison
+     * This ensures both algorithms have the same post-optimization processing
+     */
+    private class LoadBalancer {
+        private final Map<Cloudlet, Vm> schedule;
+        private final int[] vmUsage;
+        private final int vmCount;
+        
+        public LoadBalancer(Map<Cloudlet, Vm> schedule, int vmCount) {
+            this.schedule = schedule;
+            this.vmCount = vmCount;
+            this.vmUsage = new int[vmCount];
+        }
+        
+        public void recordAssignment(int vmIndex) {
+            vmUsage[vmIndex]++;
+        }
+        
+        public void balance() {
+            for (int vmIdx = 0; vmIdx < vmCount; vmIdx++) {
+                if (isUnderutilized(vmIdx)) {
+                    redistributeToVm(vmIdx);
+                }
+            }
+        }
+        
+        private boolean isUnderutilized(int vmIdx) {
+            return vmUsage[vmIdx] == 0;
+        }
+        
+        private void redistributeToVm(int targetVmIdx) {
+            int sourceVmIdx = findMostLoadedVm();
+            
+            // Use proportional threshold instead of hardcoded value
+            int minTasksBeforeRedistribution = Math.max(1, cloudlets.size() / vms.size());
+            if (vmUsage[sourceVmIdx] > minTasksBeforeRedistribution) {
+                moveOneCloudlet(sourceVmIdx, targetVmIdx);
+            }
+        }
+        
+        private int findMostLoadedVm() {
+            int maxLoadedVm = 0;
+            int maxLoad = vmUsage[0];
+            
+            for (int i = 1; i < vmCount; i++) {
+                if (vmUsage[i] > maxLoad) {
+                    maxLoad = vmUsage[i];
+                    maxLoadedVm = i;
+                }
+            }
+            
+            return maxLoadedVm;
+        }
+        
+        private void moveOneCloudlet(int fromVmIdx, int toVmIdx) {
+            Vm sourceVm = vms.get(fromVmIdx);
+            Vm targetVm = vms.get(toVmIdx);
+            
+            for (Map.Entry<Cloudlet, Vm> entry : schedule.entrySet()) {
+                if (entry.getValue().equals(sourceVm)) {
+                    schedule.put(entry.getKey(), targetVm);
+                    vmUsage[fromVmIdx]--;
+                    vmUsage[toVmIdx]++;
+                    break; // Only move one task at a time for stability
+                }
+            }
+        }
     }
 }

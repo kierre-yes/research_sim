@@ -293,9 +293,9 @@ public class EnhancedPSO implements ISchedulingAlgorithm {
         private void redistributeToVm(int targetVmIdx) {
             int sourceVmIdx = findMostLoadedVm();
             
-            // I only redistribute if source VM has more than 2 tasks
-            // to prevent thrashing
-            if (vmUsage[sourceVmIdx] > 2) {
+            
+            int minTasksBeforeRedistribution = Math.max(1, cloudlets.size() / vms.size());
+            if (vmUsage[sourceVmIdx] > minTasksBeforeRedistribution) {
                 moveOneCloudlet(sourceVmIdx, targetVmIdx);
             }
         }
