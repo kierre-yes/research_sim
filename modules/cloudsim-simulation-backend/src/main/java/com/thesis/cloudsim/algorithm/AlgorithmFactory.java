@@ -37,8 +37,7 @@ public class AlgorithmFactory {
         
         switch (algorithmName.toUpperCase()) {
             case "EPSO", "ENHANCEDPSO" -> {
-                // EPSO parameters - needs more exploration time
-                params.setParameter(AlgorithmParameters.MAX_ITERATIONS, 150);
+                params.setParameter(AlgorithmParameters.MAX_ITERATIONS, 100);
                 params.setParameter(AlgorithmParameters.POPULATION_SIZE, 30);
                 // Adaptive inertia weight (0.9 to 0.4) for broad exploration then convergence
                 params.setParameter(AlgorithmParameters.INERTIA_WEIGHT, 0.9);
@@ -54,9 +53,9 @@ public class AlgorithmFactory {
                 params.setParameter(AlgorithmParameters.MAX_VELOCITY_FINAL, 1.0);
             }
             case "EACO", "ENHANCEDACO" -> {
-                // ACO parameters - faster convergence due to pheromone trails
-                params.setParameter(AlgorithmParameters.MAX_ITERATIONS, 120);
-                params.setParameter(AlgorithmParameters.POPULATION_SIZE, 25);
+                // ACO parameters - Equal computational budget: 100 iterations × 30 ants = 3000 evaluations  
+                params.setParameter(AlgorithmParameters.MAX_ITERATIONS, 100);
+                params.setParameter(AlgorithmParameters.POPULATION_SIZE, 30);
                 // Pheromone persistence vs exploration balance
                 params.setParameter(AlgorithmParameters.PHEROMONE_DECAY, 0.6);
                 // Heuristic (beta) has more influence than pheromone (alpha)
@@ -83,22 +82,26 @@ public class AlgorithmFactory {
 
     /**
      * Creates parameters with custom weights for multi-objective optimization
-     * Weights are normalized to sum to 1.0 for comparable fitness values
+     * uses raw weights to preserve user preferences without forced normalization
      */
     public static AlgorithmParameters createMultiObjectiveParameters(
             double makespanWeight, double costWeight, double energyWeight, double loadBalanceWeight) {
         
-        double totalWeight = makespanWeight + costWeight + energyWeight + loadBalanceWeight;
-        if (totalWeight <= 0) {
-            throw new IllegalArgumentException("Total weight must be positive");
+        // Validate at least one weight is positive
+        if (makespanWeight < 0 || costWeight < 0 || energyWeight < 0 || loadBalanceWeight < 0) {
+            throw new IllegalArgumentException("Weights must be non-negative");
+        }
+        
+        if (makespanWeight + costWeight + energyWeight + loadBalanceWeight <= 0) {
+            throw new IllegalArgumentException("At least one weight must be positive");
         }
         
         AlgorithmParameters params = new AlgorithmParameters();
-        // Normalize weights to sum to 1.0
-        params.setParameter(AlgorithmParameters.MAKESPAN_WEIGHT, makespanWeight / totalWeight);
-        params.setParameter(AlgorithmParameters.COST_WEIGHT, costWeight / totalWeight);
-        params.setParameter(AlgorithmParameters.ENERGY_WEIGHT, energyWeight / totalWeight);
-        params.setParameter(AlgorithmParameters.LOAD_BALANCE_WEIGHT, loadBalanceWeight / totalWeight);
+        // If user wants makespan=100 and others=1, respect that strong preference
+        params.setParameter(AlgorithmParameters.MAKESPAN_WEIGHT, makespanWeight);
+        params.setParameter(AlgorithmParameters.COST_WEIGHT, costWeight);
+        params.setParameter(AlgorithmParameters.ENERGY_WEIGHT, energyWeight);
+        params.setParameter(AlgorithmParameters.LOAD_BALANCE_WEIGHT, loadBalanceWeight);
         return params;
     }
 

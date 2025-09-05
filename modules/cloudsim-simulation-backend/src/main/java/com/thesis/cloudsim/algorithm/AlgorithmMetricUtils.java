@@ -181,44 +181,41 @@ public final class AlgorithmMetricUtils {
         if (schedule.isEmpty()) return 0.0;
         
         double totalResponseTime = 0.0;
-        Map<Vm, Double> vmCurrentTime = new HashMap<>();
+        Map<Vm, List<Cloudlet>> vmQueues = new HashMap<>();
         
-        // I sort cloudlets by ID to simulate FIFO submission order
-        List<Cloudlet> orderedCloudlets = new ArrayList<>(schedule.keySet());
-        orderedCloudlets.sort((c1, c2) -> Long.compare(c1.getCloudletId(), c2.getCloudletId()));
-        
-        for (Cloudlet cloudlet : orderedCloudlets) {
-            Vm vm = schedule.get(cloudlet);
-            
-            // I track the current time for each VM to calculate waiting time
-            double vmTime = vmCurrentTime.getOrDefault(vm, 0.0);
-            
-            // I calculate waiting time as the time cloudlet waits before execution starts
-            double waitingTime = vmTime;
-            
-            // I calculate execution time based on cloudlet length and VM speed
-            double executionTime = cloudlet.getCloudletLength() / vm.getMips();
-
-            // I sum waiting and execution time to get total response time
-            double responseTime = waitingTime + executionTime;
-            totalResponseTime += responseTime;
-            
-            // I update VM's current time for next cloudlet in queue
-            vmCurrentTime.put(vm, vmTime + executionTime);
+        // Group cloudlets by their assigned VMs 
+        for (Map.Entry<Cloudlet, Vm> entry : schedule.entrySet()) {
+            vmQueues.computeIfAbsent(entry.getValue(), k -> new ArrayList<>())
+                    .add(entry.getKey());
         }
         
-        // I return average response time across all cloudlets
+        // process each VM's queue in the order they were scheduled
+        for (Map.Entry<Vm, List<Cloudlet>> vmEntry : vmQueues.entrySet()) {
+            Vm vm = vmEntry.getKey();
+            List<Cloudlet> cloudlets = vmEntry.getValue();
+            
+            double vmCurrentTime = 0.0;
+            for (Cloudlet cloudlet : cloudlets) {
+
+                double waitingTime = vmCurrentTime;
+                
+
+                double executionTime = cloudlet.getCloudletLength() / vm.getMips();
+                
+
+                double responseTime = waitingTime + executionTime;
+                totalResponseTime += responseTime;
+                
+                // update VM's current time for next cloudlet
+                vmCurrentTime += executionTime;
+            }
+        }
+        
+        // return average response time across all cloudlets
         return totalResponseTime / schedule.size();
     }
     
-
-    /**
-     * calculate Degree of Imbalance (DI) metric
-     * 
-     * measures how unevenly work is distributed across VMs
-     * ower values indicate better balance (0 = perfect balance)
-     * higher values indicate worse balance (more imbalance)
-     */
+    
     public static double degreeOfImbalance(Map<Cloudlet, Vm> schedule) {
         Map<Vm, Double> vmCompletionTimes = new HashMap<>();
         
@@ -312,24 +309,36 @@ public final class AlgorithmMetricUtils {
                       vms.stream().mapToDouble(Vm::getMips).min().orElse(1.0);
                 break;
             case "cost":
-                // I use empirical factor for simple cost upper bound
-                max = cloudlets.stream().mapToDouble(Cloudlet::getCloudletLength).sum() * 0.1;
+                double totalWork = cloudlets.stream().mapToDouble(Cloudlet::getCloudletLength).sum();
+                double slowestExec = totalWork / vms.stream().mapToDouble(Vm::getMips).min().orElse(1.0);
+                double maxRam = vms.stream().mapToDouble(Vm::getRam).max().orElse(1.0);
+                max = slowestExec * (maxRam * 0.001); // Based on actual cost formula
                 break;
             case "enhancedCost":
-                // I use higher factor for enhanced cost due to additional components
-                max = cloudlets.stream().mapToDouble(Cloudlet::getCloudletLength).sum() * 0.2;
+                double totalCloudletWork = cloudlets.stream().mapToDouble(Cloudlet::getCloudletLength).sum();
+                double worstExecTime = totalCloudletWork / vms.stream().mapToDouble(Vm::getMips).min().orElse(1.0);
+                double maxVmMips = vms.stream().mapToDouble(Vm::getMips).max().orElse(1.0);
+                double maxVmRam = vms.stream().mapToDouble(Vm::getRam).max().orElse(1.0);
+                double maxStorage = vms.stream().mapToDouble(Vm::getSize).max().orElse(1.0);
+                double maxFileSize = cloudlets.stream().mapToDouble(c -> c.getCloudletFileSize() + c.getCloudletOutputSize()).max().orElse(1.0);
+                max = (maxVmMips * worstExecTime * 0.00001) + 
+                      (maxVmRam * worstExecTime * 0.000005) + 
+                      (maxStorage * worstExecTime * 0.000001) + 
+                      (maxFileSize * 0.00001);
                 break;
             case "costEfficiency":
-                // I set reasonable upper bound for efficiency metric
-                max = 10.0;
+                max = cloudlets.size() / 0.001; // Maximum tasks per minimum cost
                 break;
             case "energy":
-                // I estimate maximum energy based on total work and power consumption
-                max = cloudlets.stream().mapToDouble(Cloudlet::getCloudletLength).sum() * 100.0;
+                // Use actual power constants from energy calculation
+                double P_MAX = 215.0; // From energy method
+                double totalExecTime = cloudlets.stream().mapToDouble(Cloudlet::getCloudletLength).sum() / 
+                                       vms.stream().mapToDouble(Vm::getMips).min().orElse(1.0);
+                max = P_MAX * totalExecTime * vms.size(); // Maximum power * time * all VMs
                 break;
             case "loadBalance":
-                // I use 2.0 as typical maximum imbalance degree
-                max = 2.0;  
+                // Theoretical maximum imbalance: all work on one VM
+                max = vms.size() - 1.0; // (maxTime - 0) / avgTime where avgTime = maxTime/n
                 break;
             case "responseTime":
                 // I calculate worst-case response time: sequential execution on slowest VM
