@@ -341,17 +341,30 @@ public class AnalysisInterpretationService {
     }
     
     private double calculatePerformanceScore(SimulationResults.Summary summary) {
-        double makespanScore = Math.max(0, 1 - (summary.getMakespan() / 100));
-        double utilizationScore = summary.getResourceUtilization() / 100;
-        double energyScore = Math.max(0, 1 - (summary.getEnergyConsumption() / 1000));
-        double responseScore = Math.max(0, 1 - (summary.getResponseTime() / 20));
-        double balanceScore = Math.max(0, 1 - summary.getLoadBalance());
         
-        return (makespanScore * 0.3 + 
+        // typical range 10-1000 seconds for standard workloads
+        double makespanScore = Math.max(0, Math.min(1, 1 - (Math.log10(summary.getMakespan() + 1) / 3)));
+        
+        // Utilization: already in percentage, optimal is 60-80%
+        double utilization = summary.getResourceUtilization();
+        double utilizationScore = utilization < 60 ? utilization / 60 : 
+                                 utilization > 80 ? 1 - (utilization - 80) / 20 : 1.0;
+        
+        // use logarithmic scale for better distribution
+        double energyScore = Math.max(0, Math.min(1, 1 - (Math.log10(summary.getEnergyConsumption() + 1) / 4)));
+        
+        //  typical range 1-100 seconds
+        double responseScore = Math.max(0, Math.min(1, 1 - (Math.log10(summary.getResponseTime() + 1) / 2)));
+        
+        //  lower is better, 0 is perfect
+        double balanceScore = Math.max(0, 1 - Math.min(1, summary.getLoadBalance()));
+        
+        // Equal weighting for transparency (can be adjusted based on user preference)
+        return (makespanScore * 0.2 + 
                 utilizationScore * 0.2 + 
                 energyScore * 0.2 + 
                 responseScore * 0.2 + 
-                balanceScore * 0.1);
+                balanceScore * 0.2);
     }
     
     private double calculateEfficiencyScore(SimulationResults.Summary summary) {
@@ -364,16 +377,19 @@ public class AnalysisInterpretationService {
     }
     
     private String getPerformanceGrade(double score) {
-        if (score >= 0.9) return "A+";
-        if (score >= 0.85) return "A";
-        if (score >= 0.8) return "A-";
-        if (score >= 0.75) return "B+";
-        if (score >= 0.7) return "B";
-        if (score >= 0.65) return "B-";
-        if (score >= 0.6) return "C+";
-        if (score >= 0.55) return "C";
-        if (score >= 0.5) return "C-";
-        return "D";
+        if (score >= 0.93) return "A+";  // Top 7%
+        if (score >= 0.87) return "A";   // 87-93%
+        if (score >= 0.80) return "A-";  // 80-87%
+        if (score >= 0.73) return "B+";  // 73-80%
+        if (score >= 0.67) return "B";   // 67-73%
+        if (score >= 0.60) return "B-";  // 60-67%
+        if (score >= 0.53) return "C+";  // 53-60%
+        if (score >= 0.47) return "C";   // 47-53%
+        if (score >= 0.40) return "C-";  // 40-47%
+        if (score >= 0.33) return "D+";  // 33-40%
+        if (score >= 0.27) return "D";   // 27-33%
+        if (score >= 0.20) return "D-";  // 20-27%
+        return "F";                       // Below 20%
     }
     
     private String identifyStrengths(SimulationResults.Summary summary) {
