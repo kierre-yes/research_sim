@@ -101,8 +101,8 @@ ENV JAVA_OPTS="-Xmx400m -Xms256m \
     -Dserver.port=${PORT:-8081} \
     -Dmatlab.enabled=false"
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=3s --start-period=60s --retries=3 \
+# Health check - adjusted for slower startup
+HEALTHCHECK --interval=30s --timeout=10s --start-period=130s --retries=5 \
     CMD curl -f http://localhost:${PORT:-8081}/actuator/health || exit 1
 
 # Start the application
