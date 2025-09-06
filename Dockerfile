@@ -20,6 +20,12 @@ RUN mkdir -p /tmp/matlab/src/com/mathworks/engine && \
     echo '    public static MatlabEngine startMatlab(String[] options) throws Exception {' >> /tmp/matlab/src/com/mathworks/engine/MatlabEngine.java && \
     echo '        throw new UnsupportedOperationException("MATLAB not available in this environment");' >> /tmp/matlab/src/com/mathworks/engine/MatlabEngine.java && \
     echo '    }' >> /tmp/matlab/src/com/mathworks/engine/MatlabEngine.java && \
+    echo '    public static MatlabEngine connectMatlab() throws Exception {' >> /tmp/matlab/src/com/mathworks/engine/MatlabEngine.java && \
+    echo '        throw new UnsupportedOperationException("MATLAB not available in this environment");' >> /tmp/matlab/src/com/mathworks/engine/MatlabEngine.java && \
+    echo '    }' >> /tmp/matlab/src/com/mathworks/engine/MatlabEngine.java && \
+    echo '    public static MatlabEngine connectMatlab(String name) throws Exception {' >> /tmp/matlab/src/com/mathworks/engine/MatlabEngine.java && \
+    echo '        throw new UnsupportedOperationException("MATLAB not available in this environment");' >> /tmp/matlab/src/com/mathworks/engine/MatlabEngine.java && \
+    echo '    }' >> /tmp/matlab/src/com/mathworks/engine/MatlabEngine.java && \
     echo '    public Future<Void> evalAsync(String command) {' >> /tmp/matlab/src/com/mathworks/engine/MatlabEngine.java && \
     echo '        throw new UnsupportedOperationException("MATLAB not available in this environment");' >> /tmp/matlab/src/com/mathworks/engine/MatlabEngine.java && \
     echo '    }' >> /tmp/matlab/src/com/mathworks/engine/MatlabEngine.java && \
