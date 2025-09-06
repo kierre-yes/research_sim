@@ -1,4 +1,5 @@
 # Build stage
+# Force rebuild: v2
 FROM maven:3.9-eclipse-temurin-21-alpine AS build
 WORKDIR /app
 
@@ -108,5 +109,5 @@ ENV JAVA_OPTS="-Xmx400m -Xms256m \
 HEALTHCHECK --interval=30s --timeout=10s --start-period=130s --retries=5 \
     CMD curl -f http://localhost:${PORT:-8081}/actuator/health || exit 1
 
-# Start the application
-ENTRYPOINT ["sh", "-c", "java $JAVA_OPTS -jar app.jar"]
+# Start the application with railway profile
+ENTRYPOINT ["sh", "-c", "java $JAVA_OPTS -jar app.jar --spring.profiles.active=railway"]
