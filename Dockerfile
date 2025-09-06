@@ -5,13 +5,19 @@ WORKDIR /app
 COPY pom.xml .
 COPY modules/ modules/
 
+# Create a dummy MATLAB jar to satisfy the dependency (since we won't use MATLAB in Railway)
+RUN mkdir -p /tmp/matlab && \
+    echo "Manifest-Version: 1.0" > /tmp/matlab/manifest.txt && \
+    jar cfm /tmp/matlab/engine.jar /tmp/matlab/manifest.txt
+
 # Build with sufficient memory for Maven
 ENV MAVEN_OPTS="-Xmx1024m -Xms512m"
 
-# Build all modules in correct order
+# Build all modules in correct order with the dummy MATLAB jar
 RUN mvn clean install -DskipTests -pl modules/cloudsim -am && \
     mvn clean install -DskipTests -pl modules/cloudsim-examples -am && \
-    mvn clean install -DskipTests -pl modules/cloudsim-simulation-backend -am
+    mvn clean install -DskipTests -pl modules/cloudsim-simulation-backend -am \
+    -Dmatlab.engine.jar=/tmp/matlab/engine.jar
 
 # Runtime stage
 FROM eclipse-temurin:21-jre-alpine
@@ -41,7 +47,8 @@ ENV JAVA_OPTS="-Xmx400m -Xms256m \
     -XX:MaxGCPauseMillis=100 \
     -XX:+UseStringDeduplication \
     -Djava.security.egd=file:/dev/./urandom \
-    -Dserver.port=${PORT:-8081}"
+    -Dserver.port=${PORT:-8081} \
+    -Dmatlab.enabled=false"
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=60s --retries=3 \
