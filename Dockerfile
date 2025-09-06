@@ -5,10 +5,53 @@ WORKDIR /app
 COPY pom.xml .
 COPY modules/ modules/
 
-# Create a dummy MATLAB jar to satisfy the dependency (since we won't use MATLAB in Railway)
-RUN mkdir -p /tmp/matlab && \
-    echo "Manifest-Version: 1.0" > /tmp/matlab/manifest.txt && \
-    jar cfm /tmp/matlab/engine.jar /tmp/matlab/manifest.txt
+RUN mkdir -p /tmp/matlab/src/com/mathworks/engine && \
+    echo 'package com.mathworks.engine;' > /tmp/matlab/src/com/mathworks/engine/MatlabEngine.java && \
+    echo 'import java.util.concurrent.Future;' >> /tmp/matlab/src/com/mathworks/engine/MatlabEngine.java && \
+    echo 'import java.util.concurrent.CancellationException;' >> /tmp/matlab/src/com/mathworks/engine/MatlabEngine.java && \
+    echo 'import java.util.concurrent.ExecutionException;' >> /tmp/matlab/src/com/mathworks/engine/MatlabEngine.java && \
+    echo 'public class MatlabEngine implements AutoCloseable {' >> /tmp/matlab/src/com/mathworks/engine/MatlabEngine.java && \
+    echo '    public static Future<MatlabEngine> startMatlabAsync() throws Exception {' >> /tmp/matlab/src/com/mathworks/engine/MatlabEngine.java && \
+    echo '        throw new UnsupportedOperationException("MATLAB not available in this environment");' >> /tmp/matlab/src/com/mathworks/engine/MatlabEngine.java && \
+    echo '    }' >> /tmp/matlab/src/com/mathworks/engine/MatlabEngine.java && \
+    echo '    public static MatlabEngine startMatlab() throws Exception {' >> /tmp/matlab/src/com/mathworks/engine/MatlabEngine.java && \
+    echo '        throw new UnsupportedOperationException("MATLAB not available in this environment");' >> /tmp/matlab/src/com/mathworks/engine/MatlabEngine.java && \
+    echo '    }' >> /tmp/matlab/src/com/mathworks/engine/MatlabEngine.java && \
+    echo '    public static MatlabEngine startMatlab(String[] options) throws Exception {' >> /tmp/matlab/src/com/mathworks/engine/MatlabEngine.java && \
+    echo '        throw new UnsupportedOperationException("MATLAB not available in this environment");' >> /tmp/matlab/src/com/mathworks/engine/MatlabEngine.java && \
+    echo '    }' >> /tmp/matlab/src/com/mathworks/engine/MatlabEngine.java && \
+    echo '    public Future<Void> evalAsync(String command) {' >> /tmp/matlab/src/com/mathworks/engine/MatlabEngine.java && \
+    echo '        throw new UnsupportedOperationException("MATLAB not available in this environment");' >> /tmp/matlab/src/com/mathworks/engine/MatlabEngine.java && \
+    echo '    }' >> /tmp/matlab/src/com/mathworks/engine/MatlabEngine.java && \
+    echo '    public void eval(String command) {' >> /tmp/matlab/src/com/mathworks/engine/MatlabEngine.java && \
+    echo '        throw new UnsupportedOperationException("MATLAB not available in this environment");' >> /tmp/matlab/src/com/mathworks/engine/MatlabEngine.java && \
+    echo '    }' >> /tmp/matlab/src/com/mathworks/engine/MatlabEngine.java && \
+    echo '    public <T> Future<T> getVariableAsync(String name) {' >> /tmp/matlab/src/com/mathworks/engine/MatlabEngine.java && \
+    echo '        throw new UnsupportedOperationException("MATLAB not available in this environment");' >> /tmp/matlab/src/com/mathworks/engine/MatlabEngine.java && \
+    echo '    }' >> /tmp/matlab/src/com/mathworks/engine/MatlabEngine.java && \
+    echo '    public <T> T getVariable(String name) {' >> /tmp/matlab/src/com/mathworks/engine/MatlabEngine.java && \
+    echo '        throw new UnsupportedOperationException("MATLAB not available in this environment");' >> /tmp/matlab/src/com/mathworks/engine/MatlabEngine.java && \
+    echo '    }' >> /tmp/matlab/src/com/mathworks/engine/MatlabEngine.java && \
+    echo '    public Future<Void> putVariableAsync(String name, Object value) {' >> /tmp/matlab/src/com/mathworks/engine/MatlabEngine.java && \
+    echo '        throw new UnsupportedOperationException("MATLAB not available in this environment");' >> /tmp/matlab/src/com/mathworks/engine/MatlabEngine.java && \
+    echo '    }' >> /tmp/matlab/src/com/mathworks/engine/MatlabEngine.java && \
+    echo '    public void putVariable(String name, Object value) {' >> /tmp/matlab/src/com/mathworks/engine/MatlabEngine.java && \
+    echo '        throw new UnsupportedOperationException("MATLAB not available in this environment");' >> /tmp/matlab/src/com/mathworks/engine/MatlabEngine.java && \
+    echo '    }' >> /tmp/matlab/src/com/mathworks/engine/MatlabEngine.java && \
+    echo '    public void close() {' >> /tmp/matlab/src/com/mathworks/engine/MatlabEngine.java && \
+    echo '    }' >> /tmp/matlab/src/com/mathworks/engine/MatlabEngine.java && \
+    echo '    public void disconnect() {' >> /tmp/matlab/src/com/mathworks/engine/MatlabEngine.java && \
+    echo '    }' >> /tmp/matlab/src/com/mathworks/engine/MatlabEngine.java && \
+    echo '    public void quit() {' >> /tmp/matlab/src/com/mathworks/engine/MatlabEngine.java && \
+    echo '    }' >> /tmp/matlab/src/com/mathworks/engine/MatlabEngine.java && \
+    echo '}' >> /tmp/matlab/src/com/mathworks/engine/MatlabEngine.java && \
+    echo 'package com.mathworks.engine;' > /tmp/matlab/src/com/mathworks/engine/MatlabEngineException.java && \
+    echo 'public class MatlabEngineException extends Exception {' >> /tmp/matlab/src/com/mathworks/engine/MatlabEngineException.java && \
+    echo '    public MatlabEngineException(String message) { super(message); }' >> /tmp/matlab/src/com/mathworks/engine/MatlabEngineException.java && \
+    echo '    public MatlabEngineException(String message, Throwable cause) { super(message, cause); }' >> /tmp/matlab/src/com/mathworks/engine/MatlabEngineException.java && \
+    echo '}' >> /tmp/matlab/src/com/mathworks/engine/MatlabEngineException.java && \
+    javac -d /tmp/matlab/classes /tmp/matlab/src/com/mathworks/engine/*.java && \
+    jar cf /tmp/matlab/engine.jar -C /tmp/matlab/classes .
 
 RUN sed -i 's|<matlab.engine.jar>.*</matlab.engine.jar>|<matlab.engine.jar>/tmp/matlab/engine.jar</matlab.engine.jar>|' \
     modules/cloudsim-simulation-backend/pom.xml
