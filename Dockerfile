@@ -10,14 +10,16 @@ RUN mkdir -p /tmp/matlab && \
     echo "Manifest-Version: 1.0" > /tmp/matlab/manifest.txt && \
     jar cfm /tmp/matlab/engine.jar /tmp/matlab/manifest.txt
 
+RUN sed -i 's|<matlab.engine.jar>.*</matlab.engine.jar>|<matlab.engine.jar>/tmp/matlab/engine.jar</matlab.engine.jar>|' \
+    modules/cloudsim-simulation-backend/pom.xml
+
 # Build with sufficient memory for Maven
 ENV MAVEN_OPTS="-Xmx1024m -Xms512m"
 
-# Build all modules in correct order with the dummy MATLAB jar
+# Build all modules in correct order
 RUN mvn clean install -DskipTests -pl modules/cloudsim -am && \
     mvn clean install -DskipTests -pl modules/cloudsim-examples -am && \
-    mvn clean install -DskipTests -pl modules/cloudsim-simulation-backend -am \
-    -Dmatlab.engine.jar=/tmp/matlab/engine.jar
+    mvn clean install -DskipTests -pl modules/cloudsim-simulation-backend -am
 
 # Runtime stage
 FROM eclipse-temurin:21-jre-alpine
