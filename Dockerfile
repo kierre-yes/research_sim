@@ -102,12 +102,11 @@ ENV JAVA_OPTS="-Xmx400m -Xms256m \
     -XX:MaxGCPauseMillis=100 \
     -XX:+UseStringDeduplication \
     -Djava.security.egd=file:/dev/./urandom \
-    -Dserver.port=${PORT:-8081} \
     -Dmatlab.enabled=false"
 
 # Health check - adjusted for slower startup
-HEALTHCHECK --interval=30s --timeout=10s --start-period=130s --retries=5 \
+HEALTHCHECK --interval=30s --timeout=10s --start-period=160s --retries=5 \
     CMD curl -f http://localhost:${PORT:-8081}/actuator/health || exit 1
 
-# Start the application with railway profile
-ENTRYPOINT ["sh", "-c", "java $JAVA_OPTS -jar app.jar --spring.profiles.active=railway"]
+# Start the application with railway profile and proper port binding
+ENTRYPOINT ["sh", "-c", "java $JAVA_OPTS -Dserver.port=${PORT:-8081} -jar app.jar --spring.profiles.active=railway"]
