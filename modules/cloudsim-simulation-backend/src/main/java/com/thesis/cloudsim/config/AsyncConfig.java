@@ -2,33 +2,45 @@ package com.thesis.cloudsim.config;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.scheduling.annotation.EnableAsync;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
+import org.springframework.web.servlet.config.annotation.AsyncSupportConfigurer;
+import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
 import java.util.concurrent.Executor;
+import java.util.concurrent.TimeUnit;
 
-/**
- * Configuration for async execution
- * Optimized for plot generation tasks
- */
+
 @Configuration
-public class AsyncConfig {
+@EnableAsync
+public class AsyncConfig implements WebMvcConfigurer {
+    
+    /**
+     * Configure async support with extended timeout for hour-long simulations
+     */
+    @Override
+    public void configureAsyncSupport(AsyncSupportConfigurer configurer) {
+        configurer.setDefaultTimeout(TimeUnit.HOURS.toMillis(2)); // 2 hour timeout
+        configurer.setTaskExecutor(taskExecutor());
+    }
     
     @Bean(name = "taskExecutor")
     public Executor taskExecutor() {
         ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
         
-        // configure thread pool for plot generation
+        // configure thread pool 
         executor.setCorePoolSize(4); // minimum threads
         executor.setMaxPoolSize(8); // maximum threads
-        executor.setQueueCapacity(10); // queue for pending tasks
-        executor.setThreadNamePrefix("PlotGen-");
+        executor.setQueueCapacity(100); // increased queue for pending tasks
+        executor.setThreadNamePrefix("AsyncSim-");
         
-        // keep threads alive for 60 seconds when idle
-        executor.setKeepAliveSeconds(60);
+
+        executor.setKeepAliveSeconds(3600);
         
-        // wait for tasks to complete on shutdown
+        executor.setAllowCoreThreadTimeOut(true);
+        
         executor.setWaitForTasksToCompleteOnShutdown(true);
-        executor.setAwaitTerminationSeconds(300); // wait up to 5 minutes
+        executor.setAwaitTerminationSeconds(7200); 
         
         executor.initialize();
         return executor;
