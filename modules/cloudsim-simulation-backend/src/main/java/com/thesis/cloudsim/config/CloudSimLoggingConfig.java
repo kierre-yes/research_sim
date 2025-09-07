@@ -2,7 +2,7 @@ package com.thesis.cloudsim.config;
 
 import org.cloudbus.cloudsim.Log;
 import org.springframework.context.annotation.Configuration;
-import javax.annotation.PostConstruct;
+import jakarta.annotation.PostConstruct;
 
 @Configuration
 public class CloudSimLoggingConfig {
