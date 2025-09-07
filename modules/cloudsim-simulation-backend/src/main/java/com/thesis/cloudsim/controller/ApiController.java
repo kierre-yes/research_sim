@@ -341,9 +341,13 @@ public class ApiController {
      * I provide this method so file-based simulations can also generate plots
      */
     private ResponseEntity<?> runWithMatlabPlots(SimulationRequest request) throws Exception {
+        long startTime = System.currentTimeMillis();
+        
         ISchedulingAlgorithm algorithm = getAlgorithm(request.getOptimizationAlgorithm());
         EnhancedSimulationManager manager = new EnhancedSimulationManager(algorithm, request);
         SimulationResults rawResults = manager.run();
+        
+        long executionTime = System.currentTimeMillis() - startTime;
         
         /**
          * I add metadata before passing to MATLAB to avoid null errors
@@ -367,7 +371,8 @@ public class ApiController {
             resp.put("plotData", processedResults.getPlotData());
             resp.put("plotMetadata", processedResults.getPlotMetadata());
             resp.put("analysis", analysis);
-            logger.info("Returning simulation results with MATLAB plots and analysis");
+            resp.put("executionTimeMs", executionTime);
+            logger.info("Returning simulation results with MATLAB plots and analysis in {} ms", executionTime);
             return ResponseEntity.ok(resp);
         } catch (Exception e) {
             logger.error("Failed to generate MATLAB plots, returning raw results", e);
@@ -381,6 +386,7 @@ public class ApiController {
             java.util.Map<String, Object> resp = new java.util.LinkedHashMap<>();
             resp.put("simulationResults", rawResults);
             resp.put("analysis", analysis);
+            resp.put("executionTimeMs", executionTime);
             return ResponseEntity.ok(resp);
         }
     }
