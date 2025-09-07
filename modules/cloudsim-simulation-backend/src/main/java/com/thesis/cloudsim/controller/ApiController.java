@@ -385,16 +385,20 @@ public class ApiController {
         }
     }
     
-    // Centralized runner to avoid duplicating logic across endpoints
     private ResponseEntity<?> runOrIterate(SimulationRequest request) throws Exception {
+        long startTime = System.currentTimeMillis();
+        
         if (request.getIterations() > 1) {
             ISchedulingAlgorithm algorithm = getAlgorithm(request.getOptimizationAlgorithm());
             IterationResults results = iterationService.runIterations(algorithm, request);
+           
             return ResponseEntity.ok(results);
         }
         ISchedulingAlgorithm algorithm = getAlgorithm(request.getOptimizationAlgorithm());
         EnhancedSimulationManager manager = new EnhancedSimulationManager(algorithm, request);
         SimulationResults results = manager.run();
+        
+        long executionTime = System.currentTimeMillis() - startTime;
         
         // add run metadata for reproducibility
         results.setRunId(java.util.UUID.randomUUID().toString());
@@ -409,6 +413,10 @@ public class ApiController {
         java.util.Map<String, Object> resp = new java.util.LinkedHashMap<>();
         resp.put("simulationResults", results);
         resp.put("analysis", analysis);
+        resp.put("executionTimeMs", executionTime);
+        
+        logger.debug("Simulation completed in {} ms for algorithm {}", executionTime, request.getOptimizationAlgorithm());
+        
         return ResponseEntity.ok(resp);
     }
     
