@@ -29,15 +29,14 @@ public class CloudSimSimulationApplication {
     private static final Logger logger = LoggerFactory.getLogger(CloudSimSimulationApplication.class);
 
     public static void main(String[] args) {
-        logger.info("Starting CloudSim Simulation Backend...");
+        logger.info("Starting CloudSim Simulation Backend");
         SpringApplication.run(CloudSimSimulationApplication.class, args);
     }
     
     @EventListener(ApplicationReadyEvent.class)
     public void applicationReady() {
-        // I log these startup messages so that developers can quickly verify the server is running and know the exact endpoints
-        logger.info("CloudSim Simulation Backend is ready!");
-        logger.info("Server running at: http://localhost:8081");
-        logger.info("API endpoints available at: http://localhost:8081/api/*");
+        logger.info("CloudSim Simulation Backend initialized successfully");
+        logger.info("Server available at: http://localhost:8081");
+        logger.info("API endpoints accessible at: http://localhost:8081/api/*");
     }
 }

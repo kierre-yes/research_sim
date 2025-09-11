@@ -64,7 +64,7 @@ public class ComparisonService {
         }
         
         // Run iterations for both algorithms
-        logger.info("Running EACO iterations...");
+        logger.info("Executing EACO iterations");
         request.setOptimizationAlgorithm("EACO");
         
         // Check cancellation before running EACO
@@ -75,13 +75,12 @@ public class ComparisonService {
         
         IterationResults eacoResults = iterationService.runIterations(eaco, request);
         
-        // Check cancellation before running EPSO
         if (isCancelled) {
             logger.info("Comparison cancelled after EACO, before EPSO iterations");
             throw new RuntimeException("Comparison cancelled by user");
         }
         
-        logger.info("Running EPSO iterations...");
+        logger.info("Executing EPSO iterations");
         request.setOptimizationAlgorithm("EPSO");
         IterationResults epsoResults = iterationService.runIterations(epso, request);
         
@@ -130,7 +129,7 @@ public class ComparisonService {
     private TTestResults performPairedTTest(IterationResults eacoResults, 
                                            IterationResults epsoResults,
                                            SimulationRequest request) {
-        logger.info("Performing paired t-test analysis...");
+        logger.info("Performing paired t-test analysis");
         
         TTestResults results = new TTestResults();
         results.setAlpha(0.05); // Significance level
@@ -180,7 +179,7 @@ public class ComparisonService {
         // If MATLAB is available, generate visualization
         if (matlabService != null && matlabService.isReady()) {
             try {
-                logger.info("Generating statistical analysis plots with MATLAB...");
+                logger.info("Generating statistical analysis plots with MATLAB");
                 Map<String, Object> plotData = matlabService.generateTTestPlots(results);
                 results.setPlotPaths(plotData);
             } catch (Exception e) {

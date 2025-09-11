@@ -60,10 +60,10 @@ public class MatlabIntegrationService implements PlotGenerationEngine {
             return;
         }
         
-        logger.info("Attempting to connect to MATLAB engine...");
+        logger.info("Attempting to connect to MATLAB engine");
         try {
-            // Preferred: connect to pre-started shared engine
-            logger.debug("Trying to connect to shared MATLAB engine 'thesisEngine'...");
+            // connect to prestarted matlab
+            logger.debug("Trying to connect to shared MATLAB engine 'thesisEngine'");
             engine = MatlabEngine.connectMatlab("thesisEngine");
             logger.info("Successfully connected to shared MATLAB engine");
         } catch (Exception connectEx) {
@@ -72,7 +72,7 @@ public class MatlabIntegrationService implements PlotGenerationEngine {
             
             try {
                 // Fallback: launch a new MATLAB process (takes ~50 s)
-                logger.info("Starting new MATLAB engine instance...");
+                logger.info("Starting new MATLAB engine instance");
                 engine = MatlabEngine.startMatlab();
                 logger.info("Successfully started new MATLAB engine");
             } catch (Exception startEx) {
@@ -97,7 +97,7 @@ public class MatlabIntegrationService implements PlotGenerationEngine {
         try {
             // Check if MATLAB engine is available
             if (engine == null) {
-                logger.warn("MATLAB engine not available, attempting to initialize...");
+                logger.warn("MATLAB engine not available, attempting to initialize");
                 try {
                     ensureEngine();
                 } catch (Exception engineEx) {
@@ -340,7 +340,7 @@ public class MatlabIntegrationService implements PlotGenerationEngine {
     }
 
     public Map<String, Object> generateTTestPlots(com.thesis.cloudsim.dto.TTestResults tTestResults) {
-        logger.info("Generating t-test visualization plots with MATLAB...");
+        logger.info("Generating t-test visualization plots with MATLAB");
         
         try {
             ensureEngine();
