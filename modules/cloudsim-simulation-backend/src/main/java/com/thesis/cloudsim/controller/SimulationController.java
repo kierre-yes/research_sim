@@ -119,7 +119,7 @@ public class SimulationController {
         EnhancedSimulationManager manager = new EnhancedSimulationManager(algorithm, request);
         
         if (!matlabService.isReady()) {
-            logger.info("MATLAB engine warming up...");
+            logger.info("MATLAB engine initializing");
             return ResponseEntity
                     .accepted()
                     .header(org.springframework.http.HttpHeaders.RETRY_AFTER, "5")

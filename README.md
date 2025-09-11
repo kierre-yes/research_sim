@@ -58,17 +58,120 @@ java -jar target/cloudsim-simulation-backend-1.0.0-SNAPSHOT.jar
 
 ## MATLAB Integration
 
-If you need MATLAB features, install MATLAB R2025a and the MATLAB Engine for Java on Windows. Ensure these are on PATH:
-- `C:\\Program Files\\MATLAB\\R2025a\\bin\\win64`
-- `C:\\Program Files\\MATLAB\\R2025a\\extern\\engines\\java\\win64`
+The backend supports optional MATLAB integration for advanced plotting and statistical analysis. MATLAB is automatically disabled in production and only works in local development.
 
-Run with explicit library path:
-```bash
-java -Djava.library.path="C:\\Program Files\\MATLAB\\R2025a\\bin\\win64;C:\\Program Files\\MATLAB\\R2025a\\extern\\engines\\java\\win64" \
-  -jar target/cloudsim-simulation-backend-1.0.0-SNAPSHOT.jar
+### Local Development: Enable MATLAB
+
+**Prerequisites:**
+- Windows 10/11 (recommended)
+- MATLAB R2025a installed
+- MATLAB Engine API for Java
+
+**Step 1: Install MATLAB Engine for Java**
+1. Open MATLAB as Administrator
+2. Run these commands in MATLAB:
+   ```matlab
+   cd(fullfile(matlabroot,'extern','engines','java'))
+   system('mvn install')
+   ```
+
+**Step 2: Set Environment Variables (Windows)**
+Add to your system PATH:
+```
+C:\Program Files\MATLAB\R2025a\bin\win64
+C:\Program Files\MATLAB\R2025a\extern\engines\java\win64
+C:\Program Files\MATLAB\R2025a\extern\bin\win64
 ```
 
-Place MATLAB .m scripts on disk and add them to MATLAB path at runtime. The app expects to call functions such as `generateComparisonPlots` and `pairedTTest`.
+**Step 3: Run with MATLAB Support**
+Use the provided script:
+```bash
+# Use the provided batch file (Windows)
+run-local-with-matlab.bat
+```
+
+Or run manually:
+```bash
+mvn spring-boot:run -Dmatlab.home="C:\Program Files\MATLAB\R2025a" -Plocal-matlab
+```
+
+**Step 4: Start MATLAB Shared Engine (Optional for faster startup)**
+```matlab
+% In MATLAB, run:
+matlab.engine.shareEngine('thesisEngine')
+```
+
+### Production: MATLAB Disabled by Default
+
+For production deployment (Railway, Docker, etc.), MATLAB is automatically disabled:
+
+```bash
+# Production build (no MATLAB dependencies)
+mvn clean install -Pdeployment
+
+# Run without MATLAB
+java -jar target/cloudsim-simulation-backend-1.0.0-SNAPSHOT.jar
+```
+
+**What happens without MATLAB:**
+- All simulations work normally
+- Statistical analysis still available
+- No MATLAB-generated plots
+- Graceful degradation with informative messages
+
+### Testing MATLAB Configuration
+
+**Check if MATLAB is detected:**
+```bash
+curl http://localhost:8081/actuator/health
+```
+
+**Test with MATLAB plots:**
+```bash
+curl -X POST http://localhost:8081/api/simulate/with-plots \
+  -H "Content-Type: application/json" \
+  -d '{"optimizationAlgorithm":"EPSO","numHosts":5,"numVMs":10,"numCloudlets":50}'
+```
+
+**Test without MATLAB plots:**
+```bash
+curl -X POST http://localhost:8081/api/simulate/raw \
+  -H "Content-Type: application/json" \
+  -d '{"optimizationAlgorithm":"EPSO","numHosts":5,"numVMs":10,"numCloudlets":50}'
+```
+
+### MATLAB Scripts Location
+Place your .m files in:
+```
+src/main/resources/matlab/
+├── generateComparisonPlots.m
+├── pairedTTest.m
+└── other_scripts.m
+```
+
+### MATLAB Troubleshooting
+
+**Issue: "MATLAB Engine connection failed"**
+```bash
+# Check MATLAB installation path
+dir "C:\Program Files\MATLAB\R2025a"
+
+# Verify ENGINE API
+dir "C:\Program Files\MATLAB\R2025a\extern\engines\java\jar\engine.jar"
+
+# Test in MATLAB
+matlab.engine.engineName  % Should not error
+```
+
+**Issue: "Native library not found"**
+- Ensure MATLAB paths are in system PATH
+- Restart your terminal/IDE after PATH changes
+- Run as Administrator if needed
+
+**Issue: "MATLAB scripts not found"**
+- Check scripts are in `src/main/resources/matlab/`
+- Verify script names match function calls in Java code
+- Ensure scripts have proper MATLAB syntax
 
 ## API Endpoints
 
