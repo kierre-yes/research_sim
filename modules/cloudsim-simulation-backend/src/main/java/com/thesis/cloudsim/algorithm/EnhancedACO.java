@@ -240,10 +240,10 @@ public class EnhancedACO implements ISchedulingAlgorithm {
             return rhoMax; // Maximum evaporation for maximum exploration
         }
         
-        // I increase evaporation when solutions are similar by small fitness gap
-        // and decrease it when solutions are diverse by large fitness gap
+        // I increase evaporation when solutions are diverse (large fitness gap)
+        // and decrease it when solutions are similar (small fitness gap) to converge
         double adaptiveRate = rhoMin + (rhoMax - rhoMin) * 
-                             ((bestFitnessValue - avgFitness) / bestFitnessValue);
+                             ((avgFitness - bestFitnessValue) / bestFitnessValue);
         
         // I ensure the rate stays within configured bounds
         return Math.max(rhoMin, Math.min(rhoMax, adaptiveRate));
