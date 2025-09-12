@@ -121,12 +121,15 @@ public class AnalysisInterpretationService {
             getResponseTimeImpact(summary.getResponseTime())
         ));
         
+        double degreeOfImbalance = summary.getLoadImbalance() > 0 ? 
+            summary.getLoadImbalance() : summary.getLoadBalance();
+        
         interpretations.put("loadBalance", String.format(
-            "Load balance degree of %.3f indicates %s distribution across resources. " +
+            "Degree of Imbalance (DI) of %.4f indicates %s distribution across resources. " +
             "%s",
-            summary.getLoadBalance(),
-            categorizeLoadBalance(summary.getLoadBalance()),
-            getLoadBalanceImplication(summary.getLoadBalance())
+            degreeOfImbalance,
+            categorizeDegreeOfImbalance(degreeOfImbalance),
+            getDegreeOfImbalanceImplication(degreeOfImbalance)
         ));
         
         return interpretations;
@@ -315,6 +318,13 @@ public class AnalysisInterpretationService {
         return "poor";
     }
     
+    private String categorizeDegreeOfImbalance(double degreeOfImbalance) {
+        if (degreeOfImbalance < 0.1) return "excellent";
+        if (degreeOfImbalance < 0.3) return "good";
+        if (degreeOfImbalance < 0.5) return "moderate";
+        return "poor";
+    }
+    
     private String getUtilizationRecommendation(double utilization) {
         if (utilization < 40) {
             return "Consider consolidating workloads to fewer resources.";
@@ -338,6 +348,17 @@ public class AnalysisInterpretationService {
             return "Good distribution with minor optimization opportunities.";
         }
         return "Uneven distribution may lead to bottlenecks and inefficiency.";
+    }
+    
+    private String getDegreeOfImbalanceImplication(double degreeOfImbalance) {
+        if (degreeOfImbalance < 0.1) {
+            return "Excellent load distribution ensures optimal resource usage and prevents bottlenecks.";
+        } else if (degreeOfImbalance < 0.3) {
+            return "Good load distribution with minor optimization opportunities available.";
+        } else if (degreeOfImbalance < 0.5) {
+            return "Moderate imbalance detected. Consider load redistribution for better performance.";
+        }
+        return "High imbalance may lead to resource bottlenecks and reduced efficiency.";
     }
     
     private double calculatePerformanceScore(SimulationResults.Summary summary) {
@@ -445,7 +466,8 @@ public class AnalysisInterpretationService {
             case "energyConsumption": return "energy consumption";
             case "resourceUtilization": return "resource utilization";
             case "responseTime": return "response time";
-            case "loadBalance": return "load balance";
+            case "loadBalance": return "degree of imbalance";
+            case "loadImbalance": return "degree of imbalance";
             default: return metricName;
         }
     }
