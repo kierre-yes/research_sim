@@ -15,19 +15,11 @@ import org.slf4j.LoggerFactory;
 
 import java.util.List;
 import java.util.ArrayList;
-import java.util.Map;
 import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
-/**
- * Performance Metrics Calculator for CloudSim Simulations
- * 
- * This class calculates key performance metrics including makespan, resource utilization,
- * energy consumption, and load balance.
- * @author [Kier]
- * @version 1.0
- * @since 2025-07-11
- * 
- */
+
 public class MetricsCalculator {
     
     private static final Logger logger = LoggerFactory.getLogger(MetricsCalculator.class);
@@ -442,21 +434,70 @@ public class MetricsCalculator {
         schedulingLog.add(SimulationResults.SchedulingLogEntry.builder()
                 .type("configuration")
                 .data(buildConfigEntry())
+                .description("System configuration initialized")
                 .build());
         
-        // Add assignment entries
+        Map<Long, Integer> vmTaskCount = new HashMap<>();
+        Map<Long, Double> vmUtilization = new HashMap<>();
+        
         for (Cloudlet cloudlet : finishedCloudlets) {
             if (cloudlet.getGuestId() >= 0) {
+                long vmId = cloudlet.getGuestId();
+                
+                // Assignment event
                 schedulingLog.add(SimulationResults.SchedulingLogEntry.builder()
                         .type("assignment")
-                        .vmId((double) cloudlet.getGuestId())
+                        .vmId((double) vmId)
                         .cloudletId((double) cloudlet.getCloudletId())
-                        .submissionTime(0.0) // Default submission time
-                        .description(String.format("Cloudlet %d assigned to VM %d at submission time %.2f seconds",
-                                cloudlet.getCloudletId(), cloudlet.getGuestId(), 0.0))
+                        .submissionTime(cloudlet.getSubmissionTime())
+                        .description(String.format("Cloudlet %d assigned to VM %d",
+                                cloudlet.getCloudletId(), vmId))
+                        .build());
+                
+                schedulingLog.add(SimulationResults.SchedulingLogEntry.builder()
+                        .type("start")
+                        .vmId((double) vmId)
+                        .cloudletId((double) cloudlet.getCloudletId())
+                        .submissionTime(cloudlet.getExecStartTime())
+                        .description(String.format("Cloudlet %d started execution on VM %d",
+                                cloudlet.getCloudletId(), vmId))
+                        .build());
+                
+                // Task complete event
+                schedulingLog.add(SimulationResults.SchedulingLogEntry.builder()
+                        .type("complete")
+                        .vmId((double) vmId)
+                        .cloudletId((double) cloudlet.getCloudletId())
+                        .submissionTime(cloudlet.getFinishTime())
+                        .description(String.format("Cloudlet %d completed on VM %d (execution time: %.2f seconds)",
+                                cloudlet.getCloudletId(), vmId, cloudlet.getActualCPUTime()))
+                        .build());
+                
+                // Track VM utilization
+                vmTaskCount.put(vmId, vmTaskCount.getOrDefault(vmId, 0) + 1);
+                vmUtilization.put(vmId, vmUtilization.getOrDefault(vmId, 0.0) + cloudlet.getActualCPUTime());
+            }
+        }
+        
+        double avgTasksPerVm = finishedCloudlets.size() / (double) vms.size();
+        for (Map.Entry<Long, Integer> entry : vmTaskCount.entrySet()) {
+            if (entry.getValue() > avgTasksPerVm * 1.5) { 
+                schedulingLog.add(SimulationResults.SchedulingLogEntry.builder()
+                        .type("overload")
+                        .vmId(entry.getKey().doubleValue())
+                        .submissionTime(calculateMakespan() * 0.5) // Approximate midpoint
+                        .description(String.format("VM %d overloaded with %d tasks (avg: %.1f)",
+                                entry.getKey(), entry.getValue(), avgTasksPerVm))
                         .build());
             }
         }
+        
+        schedulingLog.sort((a, b) -> {
+            if (a.getSubmissionTime() == null && b.getSubmissionTime() == null) return 0;
+            if (a.getSubmissionTime() == null) return -1;
+            if (b.getSubmissionTime() == null) return 1;
+            return Double.compare(a.getSubmissionTime(), b.getSubmissionTime());
+        });
         
         return schedulingLog;
     }
