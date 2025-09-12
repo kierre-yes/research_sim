@@ -480,14 +480,39 @@ public class MetricsCalculator {
         }
         
         double avgTasksPerVm = finishedCloudlets.size() / (double) vms.size();
-        for (Map.Entry<Long, Integer> entry : vmTaskCount.entrySet()) {
-            if (entry.getValue() > avgTasksPerVm * 1.5) { 
+        double makespan = calculateMakespan();
+        
+        for (Vm vm : vms) {
+            long vmId = vm.getId();
+            int taskCount = vmTaskCount.getOrDefault(vmId, 0);
+            double totalExecTime = vmUtilization.getOrDefault(vmId, 0.0);
+            
+            double cpuUtilization = 0.0;
+            if (makespan > 0) {
+                cpuUtilization = (totalExecTime / makespan) * 100;
+            }
+
+            boolean taskOverload = taskCount > avgTasksPerVm * 1.5;
+            boolean cpuOverload = cpuUtilization > 90.0;
+            
+            if (taskOverload || cpuOverload) {
+                String overloadReason;
+                if (taskOverload && cpuOverload) {
+                    overloadReason = String.format("VM %d overloaded: %d tasks (avg: %.1f), CPU: %.1f%%",
+                            vmId, taskCount, avgTasksPerVm, cpuUtilization);
+                } else if (taskOverload) {
+                    overloadReason = String.format("VM %d task overloaded: %d tasks (avg: %.1f), CPU: %.1f%%",
+                            vmId, taskCount, avgTasksPerVm, cpuUtilization);
+                } else {
+                    overloadReason = String.format("VM %d CPU overloaded: %.1f%% utilization, %d tasks",
+                            vmId, cpuUtilization, taskCount);
+                }
+                
                 schedulingLog.add(SimulationResults.SchedulingLogEntry.builder()
                         .type("overload")
-                        .vmId(entry.getKey().doubleValue())
+                        .vmId((double) vmId)
                         .submissionTime(calculateMakespan() * 0.5) // Approximate midpoint
-                        .description(String.format("VM %d overloaded with %d tasks (avg: %.1f)",
-                                entry.getKey(), entry.getValue(), avgTasksPerVm))
+                        .description(overloadReason)
                         .build());
             }
         }
