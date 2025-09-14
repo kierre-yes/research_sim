@@ -66,7 +66,8 @@ public class AnalysisInterpretationService {
         SimulationResults.Summary summary = results.getSummary();
         
         double performanceScore = calculatePerformanceScore(summary);
-        String grade = getPerformanceGrade(performanceScore);
+        String workloadType = inferWorkloadType(summary);
+        String grade = getPerformanceGradeWithContext(performanceScore, workloadType);
         
         analysis.put("grade", grade);
         analysis.put("summary", String.format(
@@ -105,12 +106,18 @@ public class AnalysisInterpretationService {
             (int) results.getSchedulingLog().stream().filter(entry -> "assignment".equals(entry.getType())).count() : 1;
         double energyPerTask = taskCount > 0 ? summary.getEnergyConsumption() / taskCount : summary.getEnergyConsumption();
         
+        String sustainabilityCategory = categorizeEnergyEfficiencyWithSustainability(
+            summary.getEnergyConsumption(), summary.getMakespan(), "standard"
+        );
+        
         interpretations.put("energyConsumption", String.format(
             "Total energy consumption of %.2f Wh reflects %s energy efficiency. " +
-            "This translates to approximately %.4f Wh per task (%d tasks completed).",
+            "This translates to approximately %.4f Wh per task (%d tasks completed). " +
+            "Carbon impact assessment: %s.",
             summary.getEnergyConsumption(),
-            categorizeEnergyEfficiency(summary.getEnergyConsumption(), summary.getMakespan()),
-            energyPerTask, taskCount
+            sustainabilityCategory,
+            energyPerTask, taskCount,
+            getCarbonImpactDescription(summary.getEnergyConsumption())
         ));
         
         interpretations.put("responseTime", String.format(
@@ -258,7 +265,9 @@ public class AnalysisInterpretationService {
             }
         }
         
-        StringBuilder explanation = new StringBuilder("Effect sizes indicate practical significance: ");
+        StringBuilder explanation = new StringBuilder(
+            "Effect sizes indicate practical significance using cloud computing-specific thresholds: "
+        );
         
         if (effectCounts.get("Large") > 0) {
             explanation.append(String.format("%d large effects (substantial practical difference), ", effectCounts.get("Large")));
@@ -302,6 +311,67 @@ public class AnalysisInterpretationService {
         if (energyPerSecond < 0.3) return "good";
         if (energyPerSecond < 0.5) return "moderate";
         return "poor";
+    }
+    
+
+    private String categorizeEnergyEfficiencyWithSustainability(double energy, double makespan, String datacenterLocation) {
+        double energyPerSecond = energy / makespan;
+        
+        double sustainabilityFactor = getSustainabilityFactor(datacenterLocation);
+        double adjustedEnergyRate = energyPerSecond * sustainabilityFactor;
+        
+        if (adjustedEnergyRate < 0.05) {
+            return "excellent (carbon-neutral)";
+        } else if (adjustedEnergyRate < 0.15) {
+            return "good (low-carbon)";
+        } else if (adjustedEnergyRate < 0.35) {
+            return "moderate (standard emissions)";
+        } else {
+            return "poor (high-carbon footprint)";
+        }
+    }
+    
+
+    private double getSustainabilityFactor(String datacenterLocation) {
+        if (datacenterLocation == null) {
+            return 1.0; 
+        }
+        
+        switch (datacenterLocation.toLowerCase()) {
+            case "renewable":
+            case "green":
+            case "nordic": // Nordic countries have high renewable energy
+                return 0.3; // 70% reduction due to renewable energy
+            case "hybrid":
+            case "europe":
+                return 0.6; // 40% reduction due to partial renewable
+            case "standard":
+            case "usa":
+                return 0.8; // 20% reduction due to some green initiatives
+            case "coal":
+            case "fossil":
+                return 1.5; // 50% penalty for fossil fuel dependency
+            default:
+                return 1.0; // Baseline carbon footprint
+        }
+    }
+    
+    private String getCarbonImpactDescription(double energyWh) {
+        // Convert Wh to kWh
+        double energyKwh = energyWh / 1000.0;
+        
+        // Average global CO2 emissions: ~0.475 kg CO2 per kWh IEA 2024 data
+        double co2Kg = energyKwh * 0.475;
+        
+        if (co2Kg < 0.01) {
+            return "negligible CO2 emissions";
+        } else if (co2Kg < 0.1) {
+            return String.format("~%.3f kg CO2 equivalent (low impact)", co2Kg);
+        } else if (co2Kg < 1.0) {
+            return String.format("~%.2f kg CO2 equivalent (moderate impact)", co2Kg);
+        } else {
+            return String.format("~%.1f kg CO2 equivalent (consider optimization for sustainability)", co2Kg);
+        }
     }
     
     private String categorizeResponseTime(double responseTime) {
@@ -413,6 +483,26 @@ public class AnalysisInterpretationService {
         return "F";                       // Below 20%
     }
     
+    
+    private String getPerformanceGradeWithContext(double score, String workloadType) {
+        double adjustedScore = score;
+        
+        if ("compute-intensive".equalsIgnoreCase(workloadType)) {
+            
+            adjustedScore = score * 1.05; 
+        } else if ("data-intensive".equalsIgnoreCase(workloadType)) {
+            adjustedScore = score;
+        } else if ("mixed".equalsIgnoreCase(workloadType) || workloadType == null) {
+            adjustedScore = score;
+        } else if ("real-time".equalsIgnoreCase(workloadType)) {
+            adjustedScore = score * 0.95; 
+        }
+        
+        adjustedScore = Math.min(1.0, adjustedScore);
+        
+        return getPerformanceGrade(adjustedScore);
+    }
+    
     private String identifyStrengths(SimulationResults.Summary summary) {
         List<String> strengths = new ArrayList<>();
         
@@ -469,6 +559,23 @@ public class AnalysisInterpretationService {
             case "loadBalance": return "degree of imbalance";
             case "loadImbalance": return "degree of imbalance";
             default: return metricName;
+        }
+    }
+    private String inferWorkloadType(SimulationResults.Summary summary) {
+        double utilizationPerMakespan = summary.getResourceUtilization() / summary.getMakespan();
+        double energyPerMakespan = summary.getEnergyConsumption() / summary.getMakespan();
+        
+        if (summary.getResourceUtilization() > 75 && summary.getMakespan() > 20) {
+            return "compute-intensive";
+        }
+        else if (summary.getMakespan() < 10 && summary.getResourceUtilization() < 70) {
+            return "data-intensive";
+        }
+        else if (summary.getResponseTime() < 2) {
+            return "real-time";
+        }
+        else {
+            return "mixed";
         }
     }
 }

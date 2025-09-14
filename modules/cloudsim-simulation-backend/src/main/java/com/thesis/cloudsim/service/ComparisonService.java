@@ -353,17 +353,10 @@ public class ComparisonService {
             test.setImprovementPercentage(0.0);
         }
         
-        // Effect size interpretation
+        //cloud computing metrics need adjusted thresholds
         double absCohensD = Math.abs(cohensD);
-        if (absCohensD < 0.2) {
-            test.setEffectSize("Negligible");
-        } else if (absCohensD < 0.5) {
-            test.setEffectSize("Small");
-        } else if (absCohensD < 0.8) {
-            test.setEffectSize("Medium");
-        } else {
-            test.setEffectSize("Large");
-        }
+        String effectSize = getCloudComputingEffectSize(absCohensD, metricName);
+        test.setEffectSize(effectSize);
         
         return test;
     }
@@ -418,6 +411,44 @@ public class ComparisonService {
             default:
                 logger.warn("Unknown metric type: {}, assuming lower is better", metricName);
                 return true;
+        }
+    }
+    
+    
+    private String getCloudComputingEffectSize(double cohensD, String metricName) {
+        
+        switch (metricName) {
+            case "makespan":
+            case "responseTime":
+                if (cohensD < 0.15) return "Negligible";
+                else if (cohensD < 0.4) return "Small";
+                else if (cohensD < 0.75) return "Medium";
+                else return "Large";
+                
+            case "energyConsumption":
+                if (cohensD < 0.25) return "Negligible";
+                else if (cohensD < 0.6) return "Small";
+                else if (cohensD < 1.0) return "Medium";
+                else return "Large";
+                
+            case "resourceUtilization":
+                if (cohensD < 0.2) return "Negligible";
+                else if (cohensD < 0.5) return "Small";
+                else if (cohensD < 0.8) return "Medium";
+                else return "Large";
+                
+            case "loadBalance":
+            case "loadImbalance":
+                if (cohensD < 0.1) return "Negligible";
+                else if (cohensD < 0.35) return "Small";
+                else if (cohensD < 0.7) return "Medium";
+                else return "Large";
+                
+            default:
+                if (cohensD < 0.2) return "Negligible";
+                else if (cohensD < 0.5) return "Small";
+                else if (cohensD < 0.8) return "Medium";
+                else return "Large";
         }
     }
     
