@@ -8,6 +8,7 @@ import com.thesis.cloudsim.algorithm.ISchedulingAlgorithm;
 import com.thesis.cloudsim.matlab.MatlabIntegrationService;
 import com.thesis.cloudsim.metrics.SimulationResults;
 import com.thesis.cloudsim.util.ConfigurationSnapshotUtil;
+import com.thesis.cloudsim.util.SimulationProgressHolder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -63,30 +64,51 @@ public class ComparisonService {
             iterationsAdjusted = true;
         }
         
-        // Run iterations for both algorithms
-        logger.info("Executing EACO iterations");
-        request.setOptimizationAlgorithm("EACO");
+        int totalComparisons = request.getIterations();
+        SimulationProgressHolder.setCurrentIteration(0, totalComparisons, "Starting Comparison");
         
-        // Check cancellation before running EACO
-        if (isCancelled) {
-            logger.info("Comparison cancelled before EACO iterations");
-            throw new RuntimeException("Comparison cancelled by user");
+
+        List<SimulationResults> eacoResultsList = new ArrayList<>();
+        List<SimulationResults> epsoResultsList = new ArrayList<>();
+        
+        for (int i = 1; i <= totalComparisons; i++) {
+            if (isCancelled) {
+                logger.info("Comparison cancelled at iteration {}", i);
+                throw new RuntimeException("Comparison cancelled by user");
+            }
+            SimulationProgressHolder.setCurrentIteration(i, totalComparisons, "Running");
+            
+
+            request.setOptimizationAlgorithm("EACO");
+            request.setIterations(1);
+            IterationResults eacoSingleResult = iterationService.runIterations(eaco, request);
+            eacoResultsList.addAll(eacoSingleResult.getIndividualResults());
+            
+            if (isCancelled) {
+                throw new RuntimeException("Comparison cancelled by user");
+            }
+            
+            request.setOptimizationAlgorithm("EPSO");
+            IterationResults epsoSingleResult = iterationService.runIterations(epso, request);
+            epsoResultsList.addAll(epsoSingleResult.getIndividualResults());
         }
         
-        IterationResults eacoResults = iterationService.runIterations(eaco, request);
+        request.setIterations(totalComparisons);
         
-        if (isCancelled) {
-            logger.info("Comparison cancelled after EACO, before EPSO iterations");
-            throw new RuntimeException("Comparison cancelled by user");
-        }
+        IterationResults eacoResults = new IterationResults();
+        eacoResults.setTotalIterations(totalComparisons);
+        eacoResults.setAlgorithm("EACO");
+        eacoResults.setIndividualResults(eacoResultsList);
         
-        logger.info("Executing EPSO iterations");
-        request.setOptimizationAlgorithm("EPSO");
-        IterationResults epsoResults = iterationService.runIterations(epso, request);
+        IterationResults epsoResults = new IterationResults();
+        epsoResults.setTotalIterations(totalComparisons);
+        epsoResults.setAlgorithm("EPSO");
+        epsoResults.setIndividualResults(epsoResultsList);
+        
+        SimulationProgressHolder.setCurrentIteration(totalComparisons, totalComparisons, "Statistical Analysis");
         
         // Perform paired t-test analysis
         TTestResults tTestResults = performPairedTTest(eacoResults, epsoResults, request);
-        
         /**
          * I generate statistical interpretations using the new analysis service
          * to provide meaningful explanations instead of just raw numbers
@@ -117,6 +139,8 @@ public class ComparisonService {
         comparison.setSeed(request.getSeed());
         comparison.setConfigSnapshot(buildConfigSnapshot(request));
         comparison.setDatasetId(computeDatasetId(request.getWorkloadPath()));
+        
+        SimulationProgressHolder.setStage("Comparison Completed");
         
         logger.info("Comparison completed in {} ms", comparison.getTotalExecutionTime());
         
