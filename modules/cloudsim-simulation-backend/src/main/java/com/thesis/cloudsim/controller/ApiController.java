@@ -11,6 +11,7 @@ import com.thesis.cloudsim.algorithm.ISchedulingAlgorithm;
 import com.thesis.cloudsim.matlab.MatlabIntegrationService;
 import com.thesis.cloudsim.dto.ProcessedResults;
 import com.thesis.cloudsim.service.AnalysisInterpretationService;
+import com.thesis.cloudsim.util.SimulationProgressHolder;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -602,6 +603,19 @@ long maxBytes = 1024L * 1024 * 1024; // 1 GB
         schema.put("descriptions", desc);
         schema.put("notes", "Headers are case-insensitive. Extra columns will be ignored. 'task_length' is accepted as an alias for 'length'. 'arrival_time' is optional.");
         return ResponseEntity.ok(schema);
+    }
+    
+    @GetMapping("/progress")
+    @Operation(summary = "Get current simulation progress", 
+              description = "Returns current iteration and stage for CloudLoadingModal")
+    @ApiResponse(responseCode = "200", description = "Current progress information")
+    public ResponseEntity<Map<String, Object>> getCurrentProgress() {
+        Map<String, Object> progress = new HashMap<>();
+        progress.put("currentIteration", SimulationProgressHolder.getCurrentIteration());
+        progress.put("totalIterations", SimulationProgressHolder.getTotalIterations());
+        progress.put("currentStage", SimulationProgressHolder.getCurrentStage());
+        progress.put("message", SimulationProgressHolder.getProgressInfo());
+        return ResponseEntity.ok(progress);
     }
     
     @PostMapping("/cancel")

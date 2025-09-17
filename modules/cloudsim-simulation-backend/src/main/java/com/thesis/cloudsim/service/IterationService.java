@@ -5,6 +5,7 @@ import com.thesis.cloudsim.dto.IterationResults;
 import com.thesis.cloudsim.dto.SimulationRequest;
 import com.thesis.cloudsim.metrics.SimulationResults;
 import com.thesis.cloudsim.simulation.EnhancedSimulationManager;
+import com.thesis.cloudsim.util.SimulationProgressHolder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -29,9 +30,16 @@ public class IterationService {
         isCancelled = false;
         
         long startTime = System.currentTimeMillis();
-        int iterations = Math.max(1, Math.min(100, request.getIterations())); // only to hundred
+        int iterations = Math.max(1, Math.min(100, request.getIterations())); 
         
-        logger.info("Starting {} iterations for {} algorithm", iterations, request.getOptimizationAlgorithm());
+        String algorithmName = request.getOptimizationAlgorithm();
+        
+        //since iter resets it, use the current in progressholder
+        if (iterations > 1) {
+            SimulationProgressHolder.setCurrentIteration(0, iterations, algorithmName + " - Initializing");
+        }
+        
+        logger.info("Starting {} iterations for {} algorithm", iterations, algorithmName);
         
         List<SimulationResults> results = new ArrayList<>();
         List<CompletableFuture<SimulationResults>> futures = new ArrayList<>();
@@ -41,6 +49,10 @@ public class IterationService {
             if (isCancelled) {
                 logger.info("Iterations cancelled before iteration {}", i + 1);
                 break;
+            }
+            
+            if (iterations > 1) {
+                SimulationProgressHolder.setCurrentIteration(i + 1, iterations, algorithmName + " - Running");
             }
             
             final int iteration = i;
@@ -122,6 +134,112 @@ public class IterationService {
         iterationResults.setSeed(request.getSeed());
         iterationResults.setConfigSnapshot(buildConfigSnapshot(request));
         iterationResults.setDatasetId(computeDatasetId(request.getWorkloadPath()));
+        
+        SimulationProgressHolder.setStage(algorithmName + " - Completed");
+        
+        return iterationResults;
+    }
+    
+    
+    public IterationResults runIterationsWithOffset(ISchedulingAlgorithm algorithm, SimulationRequest request, 
+                                                   int iterationOffset, int totalIterations) {
+        isCancelled = false;
+        
+        long startTime = System.currentTimeMillis();
+        int iterations = Math.max(1, Math.min(100, request.getIterations())); // only to hundred
+        
+        String algorithmName = request.getOptimizationAlgorithm();
+        logger.info("Starting {} iterations for {} algorithm (offset: {})", iterations, algorithmName, iterationOffset);
+        
+        List<SimulationResults> results = new ArrayList<>();
+        List<CompletableFuture<SimulationResults>> futures = new ArrayList<>();
+        
+        for (int i = 0; i < iterations; i++) {
+            if (isCancelled) {
+                logger.info("Iterations cancelled before iteration {}", i + 1);
+                break;
+            }
+            
+            int globalIteration = iterationOffset + i + 1;
+            SimulationProgressHolder.setCurrentIteration(globalIteration, totalIterations, algorithmName + " - Running");
+            
+            final int iteration = i;
+            CompletableFuture<SimulationResults> future = CompletableFuture.supplyAsync(() -> {
+                try {
+                    if (isCancelled) {
+                        logger.debug("Iteration {} cancelled", iteration + 1);
+                        return null;
+                    }
+                    
+                    logger.debug("Running iteration {} of {} (global: {} of {})", iteration + 1, iterations, globalIteration, totalIterations);
+                    EnhancedSimulationManager manager = new EnhancedSimulationManager(algorithm, request);
+                    return manager.run();
+                } catch (Exception e) {
+                    if (isCancelled) {
+                        logger.debug("Iteration {} cancelled during execution", iteration + 1);
+                        return null;
+                    }
+                    logger.error("Error in iteration {}: {}", iteration + 1, e.getMessage());
+                    return null;
+                }
+            }, executorService);
+            futures.add(future);
+        }
+        
+        CompletableFuture<Void> allFutures = CompletableFuture.allOf(
+            futures.toArray(new CompletableFuture[0])
+        );
+        
+        try {
+            allFutures.join();
+            
+            if (isCancelled) {
+                logger.info("Iterations cancelled, cancelling remaining futures");
+                for (CompletableFuture<SimulationResults> future : futures) {
+                    future.cancel(true);
+                }
+                throw new RuntimeException("Iterations cancelled by user");
+            }
+            
+            for (CompletableFuture<SimulationResults> future : futures) {
+                if (isCancelled) break; 
+                
+                SimulationResults result = future.get();
+                if (result != null) {
+                    results.add(result);
+                }
+            }
+        } catch (Exception e) {
+            if (isCancelled) {
+                logger.info("Iterations cancelled during execution");
+                throw new RuntimeException("Iterations cancelled by user");
+            }
+            logger.error("Error waiting for iterations to complete", e);
+        }
+        
+        long totalExecutionTime = System.currentTimeMillis() - startTime;
+        double successRate = (double) results.size() / iterations * 100;
+        
+        logger.info("Completed {} successful iterations out of {} ({}% success rate) in {} ms", 
+                   results.size(), iterations, String.format("%.1f", successRate), totalExecutionTime);
+        
+        IterationResults iterationResults = new IterationResults();
+        iterationResults.setTotalIterations(iterations);
+        iterationResults.setAlgorithm(request.getOptimizationAlgorithm());
+        iterationResults.setIndividualResults(results);
+        iterationResults.setTotalExecutionTime(totalExecutionTime);
+        iterationResults.setSuccessRate(successRate);
+        
+        if (!results.isEmpty()) {
+            calculateStatistics(iterationResults, results);
+        }
+        
+        iterationResults.setRunId(java.util.UUID.randomUUID().toString());
+        iterationResults.setSeed(request.getSeed());
+        iterationResults.setConfigSnapshot(buildConfigSnapshot(request));
+        iterationResults.setDatasetId(computeDatasetId(request.getWorkloadPath()));
+        
+        SimulationProgressHolder.setStage(algorithmName + " - Completed");
         
         return iterationResults;
     }
