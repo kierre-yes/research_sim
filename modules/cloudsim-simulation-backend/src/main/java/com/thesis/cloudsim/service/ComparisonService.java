@@ -74,6 +74,7 @@ public class ComparisonService {
         for (int i = 1; i <= totalComparisons; i++) {
             if (isCancelled) {
                 logger.info("Comparison cancelled at iteration {}", i);
+                SimulationProgressHolder.reset(); // Reset progress on cancellation
                 throw new RuntimeException("Comparison cancelled by user");
             }
             SimulationProgressHolder.setCurrentIteration(i, totalComparisons, "Running");
@@ -85,6 +86,7 @@ public class ComparisonService {
             eacoResultsList.addAll(eacoSingleResult.getIndividualResults());
             
             if (isCancelled) {
+                SimulationProgressHolder.reset(); // Reset progress on cancellation
                 throw new RuntimeException("Comparison cancelled by user");
             }
             
@@ -141,6 +143,14 @@ public class ComparisonService {
         comparison.setDatasetId(computeDatasetId(request.getWorkloadPath()));
         
         SimulationProgressHolder.setStage("Comparison Completed");
+        java.util.concurrent.CompletableFuture.runAsync(() -> {
+            try {
+                Thread.sleep(2000); 
+                SimulationProgressHolder.reset();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        });
         
         logger.info("Comparison completed in {} ms", comparison.getTotalExecutionTime());
         

@@ -92,6 +92,7 @@ public class IterationService {
                 for (CompletableFuture<SimulationResults> future : futures) {
                     future.cancel(true);
                 }
+                SimulationProgressHolder.reset(); // Reset progress on cancellation
                 throw new RuntimeException("Iterations cancelled by user");
             }
             
@@ -107,6 +108,7 @@ public class IterationService {
         } catch (Exception e) {
             if (isCancelled) {
                 logger.info("Iterations cancelled during execution");
+                SimulationProgressHolder.reset(); // Reset progress on cancellation
                 throw new RuntimeException("Iterations cancelled by user");
             }
             logger.error("Error waiting for iterations to complete", e);
@@ -136,6 +138,14 @@ public class IterationService {
         iterationResults.setDatasetId(computeDatasetId(request.getWorkloadPath()));
         
         SimulationProgressHolder.setStage(algorithmName + " - Completed");
+        java.util.concurrent.CompletableFuture.runAsync(() -> {
+            try {
+                Thread.sleep(2000); 
+                SimulationProgressHolder.reset();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        });
         
         return iterationResults;
     }
@@ -240,6 +250,14 @@ public class IterationService {
         iterationResults.setDatasetId(computeDatasetId(request.getWorkloadPath()));
         
         SimulationProgressHolder.setStage(algorithmName + " - Completed");
+        java.util.concurrent.CompletableFuture.runAsync(() -> {
+            try {
+                Thread.sleep(2000); 
+                SimulationProgressHolder.reset();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        });
         
         return iterationResults;
     }

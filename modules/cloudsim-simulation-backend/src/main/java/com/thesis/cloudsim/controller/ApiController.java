@@ -632,6 +632,9 @@ long maxBytes = 1024L * 1024 * 1024; // 1 GB
             iterationService.requestCancellation();
             comparisonService.requestCancellation();
             
+            // Reset progress on cancellation
+            SimulationProgressHolder.reset();
+            
             Map<String, Object> response = new HashMap<>();
             response.put("message", "Simulation cancellation requested");
             response.put("status", "cancelled");
