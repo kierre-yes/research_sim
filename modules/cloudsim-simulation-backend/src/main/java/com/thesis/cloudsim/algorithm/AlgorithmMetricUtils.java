@@ -56,6 +56,21 @@ public final class AlgorithmMetricUtils {
         return cost;
     }
     
+    // Cost model constants based on AWS/Azure pricing models (USD)
+    private static final double CPU_COST_PER_MIPS_SEC = 0.000001;    // $1e-6 per MIPS-second
+    private static final double RAM_COST_PER_MB_SEC = 0.0000005;     // $5e-7 per MB-second  
+    private static final double STORAGE_COST_PER_MB_SEC = 0.000001;  // $1e-6 per MB-second
+    private static final double BANDWIDTH_COST_PER_MB = 0.00001;     // $1e-5 per MB transfer
+    
+    // Server power model constants from "The Case for Energy-Proportional Computing"
+    private static final double SERVER_MAX_POWER_WATTS = 215.0;      // Maximum server power consumption
+    private static final double SERVER_IDLE_POWER_WATTS = 162.0;     // Idle power consumption
+    private static final double POWER_SCALING_FACTOR = 1.4;          // Non-linear power scaling exponent
+    
+
+    public static final double PHEROMONE_VARIATION_MIN = 0.95;       
+    public static final double PHEROMONE_VARIATION_RANGE = 0.1;      
+
     /**
      * Enhanced cost calculation considering all resource types
      * 
@@ -64,13 +79,6 @@ public final class AlgorithmMetricUtils {
      */
     public static double enhancedCost(Map<Cloudlet, Vm> schedule, List<Cloudlet> cloudlets, List<Vm> vms) {
         double totalCost = 0.0;
-        
-        // I define cost constants based on typical cloud pricing
-        // These can be adjusted to match specific cloud provider rates
-        final double CPU_COST_PER_MIPS_SEC = 0.000001;   // 1e-6 USD per MIPS-second
-        final double RAM_COST_PER_MB_SEC   = 0.0000005;  // 5e-7 USD per MB-second
-        final double STORAGE_COST_PER_MB_SEC = 0.000001;
-        final double BANDWIDTH_COST_PER_MB = 0.00001;
         
         for (Map.Entry<Cloudlet, Vm> entry : schedule.entrySet()) {
             Cloudlet c = entry.getKey();
@@ -126,11 +134,7 @@ public final class AlgorithmMetricUtils {
      * which shows servers consume significant idle power
      */
     public static double energy(Map<Cloudlet, Vm> schedule) {
-        // I use power values based on typical server specifications
-        // These values come from empirical measurements in data center research
-        final double P_MAX = 215.0;    // Maximum power at 100% utilization (Watts)
-        final double P_IDLE = 162.0;   // Power when server is idle but on (Watts)
-        final double ALPHA = 1.4;      // Non-linear scaling factor from research
+        // I use power values based on empirical server measurements
         
         double totalEnergy = 0.0;
         Map<Vm, Double> vmWorkloads = new HashMap<>();
@@ -158,7 +162,8 @@ public final class AlgorithmMetricUtils {
             // This reflects that power doesn't scale linearly with utilization
             double power;
             if (utilization > 0) {
-                power = (P_MAX - P_IDLE) * Math.pow(utilization, ALPHA) + P_IDLE;
+                power = (SERVER_MAX_POWER_WATTS - SERVER_IDLE_POWER_WATTS) * 
+                       Math.pow(utilization, POWER_SCALING_FACTOR) + SERVER_IDLE_POWER_WATTS;
             } else {
                 power = 0; // I assume VM can be turned off if not used
             }
@@ -331,10 +336,9 @@ public final class AlgorithmMetricUtils {
                 break;
             case "energy":
                 // Use actual power constants from energy calculation
-                double P_MAX = 215.0; // From energy method
                 double totalExecTime = cloudlets.stream().mapToDouble(Cloudlet::getCloudletLength).sum() / 
                                        vms.stream().mapToDouble(Vm::getMips).min().orElse(1.0);
-                max = P_MAX * totalExecTime * vms.size(); // Maximum power * time * all VMs
+                max = SERVER_MAX_POWER_WATTS * totalExecTime * vms.size(); // Maximum power * time * all VMs
                 break;
             case "loadBalance":
                 // Theoretical maximum imbalance: all work on one VM

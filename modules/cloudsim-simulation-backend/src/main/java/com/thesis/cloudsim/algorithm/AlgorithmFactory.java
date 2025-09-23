@@ -19,6 +19,9 @@ public class AlgorithmFactory {
         return switch (algorithmName.toUpperCase()) {
             case "EPSO", "ENHANCEDPSO" -> new EnhancedPSO();
             case "EACO", "ENHANCEDACO" -> new EnhancedACO();
+            // baseline
+            case "BPSO", "BASELINEPSO" -> new BaselinePSO();
+            case "BACO", "BASELINEACO" -> new BaselineACO();
             default -> throw new IllegalArgumentException("Unknown algorithm: " + algorithmName);
         };
     }
@@ -66,6 +69,32 @@ public class AlgorithmFactory {
                 params.setParameter(AlgorithmParameters.MIN_PHEROMONE, 0.005);
                 params.setParameter(AlgorithmParameters.MAX_PHEROMONE, 2.0);
                 // Adaptive evaporation rates
+                params.setParameter(AlgorithmParameters.EVAPORATION_MIN, 0.1);
+                params.setParameter(AlgorithmParameters.EVAPORATION_MAX, 0.9);
+            }
+            case "BPSO", "BASELINEPSO" -> {
+                //i just set it to be based on epso to be non bias
+                params.setParameter(AlgorithmParameters.MAX_ITERATIONS, 100);
+                params.setParameter(AlgorithmParameters.POPULATION_SIZE, 30);
+                params.setParameter(AlgorithmParameters.INERTIA_WEIGHT, 0.9);
+                params.setParameter(AlgorithmParameters.INERTIA_WEIGHT_MAX, 0.9);
+                params.setParameter(AlgorithmParameters.INERTIA_WEIGHT_MIN, 0.4);
+                params.setParameter(AlgorithmParameters.COGNITIVE_COEFFICIENT, 1.5);
+                params.setParameter(AlgorithmParameters.SOCIAL_COEFFICIENT, 1.5);
+                params.setParameter(AlgorithmParameters.MAX_VELOCITY, 6.0);
+                params.setParameter(AlgorithmParameters.MIN_VELOCITY, -6.0);
+                params.setParameter(AlgorithmParameters.MAX_VELOCITY_INITIAL, 6.0);
+                params.setParameter(AlgorithmParameters.MAX_VELOCITY_FINAL, 1.0);
+            }
+            case "BACO", "BASELINEACO" -> {
+                params.setParameter(AlgorithmParameters.MAX_ITERATIONS, 100);
+                params.setParameter(AlgorithmParameters.POPULATION_SIZE, 30);
+                params.setParameter(AlgorithmParameters.PHEROMONE_DECAY, 0.6);
+                params.setParameter(AlgorithmParameters.ALPHA, 1.2);
+                params.setParameter(AlgorithmParameters.BETA, 2.5);
+                params.setParameter(AlgorithmParameters.INITIAL_PHEROMONE, 0.1);
+                params.setParameter(AlgorithmParameters.MIN_PHEROMONE, 0.005);
+                params.setParameter(AlgorithmParameters.MAX_PHEROMONE, 2.0);
                 params.setParameter(AlgorithmParameters.EVAPORATION_MIN, 0.1);
                 params.setParameter(AlgorithmParameters.EVAPORATION_MAX, 0.9);
             }
