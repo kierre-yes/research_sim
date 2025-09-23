@@ -81,6 +81,7 @@ public class EnhancedACO implements ISchedulingAlgorithm {
         
         // aco loop - ants build solutions, deposit pheromones, and learn from each other
         for (currentIteration = 0; currentIteration < parameters.getInt(AlgorithmParameters.MAX_ITERATIONS); currentIteration++) {
+            calculateHeuristicMatrix();  // use heuristic matrix
             constructSolutions();     // each ant builds a complete scheduling solution
             updateBestSolution();     // track the best solution found so far
             updatePheromones();       // update pheromone trails based on solution quality
@@ -113,8 +114,9 @@ public class EnhancedACO implements ISchedulingAlgorithm {
         for (int i = 0; i < cloudletCount; i++) {
             for (int j = 0; j < vmCount; j++) {
                 // I apply 5% random variation to break symmetry in initial pheromone levels
-                double variation = 0.95 + (random.nextDouble() * 0.1);
-                pheromoneMatrix[i][j] = initialPheromone * variation; 
+                double variation = AlgorithmMetricUtils.PHEROMONE_VARIATION_MIN + 
+                                 (random.nextDouble() * AlgorithmMetricUtils.PHEROMONE_VARIATION_RANGE);
+                pheromoneMatrix[i][j] = initialPheromone * variation;
             }
         }
         
@@ -123,7 +125,9 @@ public class EnhancedACO implements ISchedulingAlgorithm {
     }
     
     private void calculateHeuristicMatrix() {
-        // I calculate heuristic values that guide ants towards efficient VM assignments
+        // I calculate load-based heuristic values that guide ants towards balanced VM assignments
+        Map<Vm, Double> vmLoads = calculateCurrentVmLoads();
+        
         for (int i = 0; i < cloudlets.size(); i++) {
             Cloudlet cloudlet = cloudlets.get(i);
             for (int j = 0; j < vms.size(); j++) {
@@ -140,9 +144,14 @@ public class EnhancedACO implements ISchedulingAlgorithm {
                     resourceRatio = vmRamCapacity / hostRamCapacity;
                 }
                 
-                // I combine execution time and resource ratio to create the heuristic value
+                // I integrate load information into heuristic (load-based reinforcement)
+                // Lower load VMs get higher heuristic values
+                double currentLoad = vmLoads.getOrDefault(vm, 0.0);
+                double loadFactor = 1.0 / (1.0 + currentLoad);
+                
+                // I combine execution time, resource ratio, and load factor for heuristic load-based reinforcement
                 // higher values indicate more desirable assignments
-                heuristicMatrix[i][j] = (1.0 / executionTime) * resourceRatio;
+                heuristicMatrix[i][j] = (1.0 / executionTime) * resourceRatio * loadFactor;
             }
         }
     }
@@ -275,20 +284,9 @@ public class EnhancedACO implements ISchedulingAlgorithm {
     private void reinforceBestSolution() {
         if (bestSolution == null) return;
         
-        // I implement load-based reinforcement so that well-balanced solutions
-        // get extra pheromone reinforcement
+        // I apply standard elitist reinforcement to the best solution
+        double reinforcement = 1.0 / (1.0 + bestFitness);
         
-        // I calculate the load on each VM in the best solution
-        Map<Vm, Double> vmLoads = new HashMap<>();
-        for (Map.Entry<Cloudlet, Vm> entry : bestSolution.entrySet()) {
-            Cloudlet cloudlet = entry.getKey();
-            Vm vm = entry.getValue();
-            double load = cloudlet.getCloudletLength() / vm.getMips();
-            vmLoads.put(vm, vmLoads.getOrDefault(vm, 0.0) + load);
-        }
-        
-        // I apply reinforcement inversely proportional to VM load
-        // This encourages balanced load distribution in future solutions
         for (int i = 0; i < cloudlets.size(); i++) {
             Cloudlet cloudlet = cloudlets.get(i);
             Vm assignedVm = bestSolution.get(cloudlet);
@@ -296,9 +294,6 @@ public class EnhancedACO implements ISchedulingAlgorithm {
             if (assignedVm != null) {
                 int vmIndex = vms.indexOf(assignedVm);
                 if (vmIndex >= 0) {
-                    double vmLoad = vmLoads.getOrDefault(assignedVm, 0.0);
-                    // I give more reinforcement to assignments that use less loaded VMs
-                    double reinforcement = 1.0 / (1.0 + vmLoad);
                     pheromoneMatrix[i][vmIndex] += reinforcement;
                 }
             }
@@ -391,6 +386,22 @@ public class EnhancedACO implements ISchedulingAlgorithm {
         }
         
         return totalFitness / ants.size();
+    }
+    
+    private Map<Vm, Double> calculateCurrentVmLoads() {
+        // I calculate current VM loads from the best solution found so far
+        Map<Vm, Double> vmLoads = new HashMap<>();
+        
+        if (bestSolution != null) {
+            for (Map.Entry<Cloudlet, Vm> entry : bestSolution.entrySet()) {
+                Cloudlet cloudlet = entry.getKey();
+                Vm vm = entry.getValue();
+                double load = cloudlet.getCloudletLength() / vm.getMips();
+                vmLoads.put(vm, vmLoads.getOrDefault(vm, 0.0) + load);
+            }
+        }
+        
+        return vmLoads;
     }
     
     @Override
@@ -528,93 +539,16 @@ public class EnhancedACO implements ISchedulingAlgorithm {
     
 
     private Map<Cloudlet, Vm> applyLoadBalancing(Map<Cloudlet, Vm> originalSchedule) {
-        if (originalSchedule == null || cloudlets.size() <= vms.size()) {
+        if (originalSchedule == null) {
             return originalSchedule;
         }
         
         Map<Cloudlet, Vm> balancedSchedule = new HashMap<>(originalSchedule);
-        LoadBalancer balancer = new LoadBalancer(balancedSchedule, vms.size());
-        
-        // Record current assignments
-        for (Map.Entry<Cloudlet, Vm> entry : balancedSchedule.entrySet()) {
-            int vmIndex = vms.indexOf(entry.getValue());
-            if (vmIndex >= 0) {
-                balancer.recordAssignment(vmIndex);
-            }
-        }
-        
+        LoadBalancer balancer = new LoadBalancer(balancedSchedule, vms, cloudlets);
         balancer.balance();
         
         return balancedSchedule;
     }
     
-    /**
-     * Load balancer implementation identical to EPSO for fair comparison
-     * This ensures both algorithms have the same post-optimization processing
-     */
-    private class LoadBalancer {
-        private final Map<Cloudlet, Vm> schedule;
-        private final int[] vmUsage;
-        private final int vmCount;
-        
-        public LoadBalancer(Map<Cloudlet, Vm> schedule, int vmCount) {
-            this.schedule = schedule;
-            this.vmCount = vmCount;
-            this.vmUsage = new int[vmCount];
-        }
-        
-        public void recordAssignment(int vmIndex) {
-            vmUsage[vmIndex]++;
-        }
-        
-        public void balance() {
-            for (int vmIdx = 0; vmIdx < vmCount; vmIdx++) {
-                if (isUnderutilized(vmIdx)) {
-                    redistributeToVm(vmIdx);
-                }
-            }
-        }
-        
-        private boolean isUnderutilized(int vmIdx) {
-            return vmUsage[vmIdx] == 0;
-        }
-        
-        private void redistributeToVm(int targetVmIdx) {
-            int sourceVmIdx = findMostLoadedVm();
-            
-            // Use proportional threshold instead of hardcoded value
-            int minTasksBeforeRedistribution = Math.max(1, cloudlets.size() / vms.size());
-            if (vmUsage[sourceVmIdx] > minTasksBeforeRedistribution) {
-                moveOneCloudlet(sourceVmIdx, targetVmIdx);
-            }
-        }
-        
-        private int findMostLoadedVm() {
-            int maxLoadedVm = 0;
-            int maxLoad = vmUsage[0];
-            
-            for (int i = 1; i < vmCount; i++) {
-                if (vmUsage[i] > maxLoad) {
-                    maxLoad = vmUsage[i];
-                    maxLoadedVm = i;
-                }
-            }
-            
-            return maxLoadedVm;
-        }
-        
-        private void moveOneCloudlet(int fromVmIdx, int toVmIdx) {
-            Vm sourceVm = vms.get(fromVmIdx);
-            Vm targetVm = vms.get(toVmIdx);
-            
-            for (Map.Entry<Cloudlet, Vm> entry : schedule.entrySet()) {
-                if (entry.getValue().equals(sourceVm)) {
-                    schedule.put(entry.getKey(), targetVm);
-                    vmUsage[fromVmIdx]--;
-                    vmUsage[toVmIdx]++;
-                    break; // Only move one task at a time for stability
-                }
-            }
-        }
-    }
+    // LoadBalancer functionality moved to shared utility class
 }
