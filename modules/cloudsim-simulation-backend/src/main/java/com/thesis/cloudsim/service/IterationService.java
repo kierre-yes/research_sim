@@ -137,15 +137,10 @@ public class IterationService {
         iterationResults.setConfigSnapshot(buildConfigSnapshot(request));
         iterationResults.setDatasetId(computeDatasetId(request.getWorkloadPath()));
         
-        SimulationProgressHolder.setStage(algorithmName + " - Completed");
-        java.util.concurrent.CompletableFuture.runAsync(() -> {
-            try {
-                Thread.sleep(2000); 
-                SimulationProgressHolder.reset();
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-            }
-        });
+        
+        if (iterations > 1) {
+            SimulationProgressHolder.setStage(algorithmName + " - Completed");
+        }
         
         return iterationResults;
     }
