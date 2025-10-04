@@ -8,6 +8,7 @@ public class SimulationProgressHolder {
     private static final AtomicInteger currentIteration = new AtomicInteger(0);
     private static final AtomicInteger totalIterations = new AtomicInteger(0);
     private static final AtomicReference<String> currentStage = new AtomicReference<>("INITIALIZING");
+    private static volatile boolean isComparisonRunning = false;
     
     public static void setCurrentIteration(int iteration, int total, String stage) {
         currentIteration.set(iteration);
@@ -16,13 +17,22 @@ public class SimulationProgressHolder {
     }
     
     public static void setStage(String stage) {
-        currentStage.set(stage);
+        if (!isComparisonRunning) {
+            currentStage.set(stage);
+        }
     }
     
     public static void reset() {
-        currentIteration.set(0);
-        totalIterations.set(0);
-        currentStage.set("INITIALIZING");
+        // Don't allow resets during comparison to prevent progress flickering
+        if (!isComparisonRunning) {
+            currentIteration.set(0);
+            totalIterations.set(0);
+            currentStage.set("INITIALIZING");
+        }
+    }
+    
+    public static void setComparisonRunning(boolean running) {
+        isComparisonRunning = running;
     }
     
     public static int getCurrentIteration() {
