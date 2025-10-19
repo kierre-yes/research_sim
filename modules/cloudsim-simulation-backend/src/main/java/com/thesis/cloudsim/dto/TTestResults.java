@@ -38,6 +38,11 @@ public class TTestResults {
         private int degreesOfFreedom;       // df = n-1
         private double pValue;              // Two-tailed p-value
         
+        // Individual algorithm statistics
+        private double eacoStd;             // Standard deviation of EACO measurements
+        private double epsoStd;             // Standard deviation of EPSO measurements
+        private String stdInterpretation;   // Interpretation of standard deviations
+        
         // Confidence interval
         private double ciLower;             // 95% CI lower bound
         private double ciUpper;             // 95% CI upper bound
