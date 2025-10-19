@@ -254,6 +254,17 @@ public class ComparisonService {
             stats.addValue(diff);
         }
         
+        DescriptiveStatistics eacoStats = new DescriptiveStatistics();
+        DescriptiveStatistics epsoStats = new DescriptiveStatistics();
+        for (int i = 0; i < n; i++) {
+            eacoStats.addValue(eacoValues[i]);
+            epsoStats.addValue(epsoValues[i]);
+        }
+        double eacoStd = eacoStats.getStandardDeviation();
+        double epsoStd = epsoStats.getStandardDeviation();
+        if (Double.isNaN(eacoStd)) eacoStd = 0.0;
+        if (Double.isNaN(epsoStd)) epsoStd = 0.0;
+        
         double meanDiff = stats.getMean();
         double stdDev = stats.getStandardDeviation();
         if (Double.isNaN(stdDev)) stdDev = 0.0;
@@ -333,6 +344,12 @@ public class ComparisonService {
         test.setCiUpper(ciUpper);
         test.setCohensD(cohensD);
         test.setSignificant(pValue < 0.05);
+        test.setEacoStd(eacoStd);
+        test.setEpsoStd(epsoStd);
+        
+        double eacoMean = eacoStats.getMean();
+        double epsoMean = epsoStats.getMean();
+        test.setStdInterpretation(generateStdInterpretation(eacoStd, epsoStd, eacoMean, epsoMean, metricName));
         
         // Debug logging to trace potential serialization issues
         if (logger.isDebugEnabled()) {
@@ -482,6 +499,105 @@ public class ComparisonService {
                 else if (cohensD < 0.5) return "Small";
                 else if (cohensD < 0.8) return "Medium";
                 else return "Large";
+        }
+    }
+    
+    private String generateStdInterpretation(double eacoStd, double epsoStd, double eacoMean, double epsoMean, String metricName) {
+        double eacoCV = eacoMean != 0.0 ? (eacoStd / Math.abs(eacoMean)) * 100 : 0.0;
+        double epsoCV = epsoMean != 0.0 ? (epsoStd / Math.abs(epsoMean)) * 100 : 0.0;
+        
+        String eacoStability = categorizeStability(eacoCV);
+        String epsoStability = categorizeStability(epsoCV);
+        
+        StringBuilder interpretation = new StringBuilder();
+        
+        interpretation.append(String.format(
+            "EACO: σ=%.4f, CV=%.2f%% (%s). EPSO: σ=%.4f, CV=%.2f%% (%s). ",
+            eacoStd, eacoCV, eacoStability,
+            epsoStd, epsoCV, epsoStability
+        ));
+        
+        double cvDifference = Math.abs(eacoCV - epsoCV);
+        
+        if (cvDifference < 5.0) {
+            interpretation.append("Both algorithms demonstrate similar stability across iterations. ");
+        } else if (eacoCV < epsoCV) {
+            double improvement = ((epsoCV - eacoCV) / epsoCV) * 100;
+            interpretation.append(String.format(
+                "EACO is more stable than EPSO (%.1f%% lower variability), indicating more predictable and reliable performance in production deployments. ",
+                improvement
+            ));
+        } else {
+            double improvement = ((eacoCV - epsoCV) / eacoCV) * 100;
+            interpretation.append(String.format(
+                "EPSO is more stable than EACO (%.1f%% lower variability), indicating more predictable and reliable performance in production deployments. ",
+                improvement
+            ));
+        }
+        
+        double avgCV = (eacoCV + epsoCV) / 2.0;
+        interpretation.append(getStabilityImplication(avgCV, metricName));
+        
+        return interpretation.toString();
+    }
+    
+    private String categorizeStability(double cv) {
+        if (cv < 10.0) {
+            return "highly stable";
+        } else if (cv < 30.0) {
+            return "stable";
+        } else if (cv < 50.0) {
+            return "moderately stable";
+        } else {
+            return "unstable";
+        }
+    }
+    
+    private String getStabilityImplication(double avgCV, String metricName) {
+        String metricContext = getMetricDisplayContext(metricName);
+        
+        if (avgCV < 10.0) {
+            return String.format(
+                "The results are highly stable for %s (CV < 10%%). This indicates the algorithm produces "
+                + "consistent, reproducible results suitable for SLA guarantees and reliable capacity planning in production environments.",
+                metricContext
+            );
+        } else if (avgCV < 30.0) {
+            return String.format(
+                "The results are stable for %s (CV < 30%%). This demonstrates reliable performance across iterations, "
+                + "which is acceptable for most cloud workloads and production deployments.",
+                metricContext
+            );
+        } else if (avgCV < 50.0) {
+            return String.format(
+                "The results are moderately stable for %s (CV < 50%%). Some performance variation exists across runs. "
+                + "Multiple evaluation runs may be needed for critical deployments to ensure consistent behavior.",
+                metricContext
+            );
+        } else {
+            return String.format(
+                "The results are unstable for %s (CV ≥ 50%%). High variability indicates unpredictable performance. "
+                + "The algorithm is sensitive to initial conditions or workload characteristics. Multiple runs and statistical analysis are essential for reliable conclusions.",
+                metricContext
+            );
+        }
+    }
+    
+    private String getMetricDisplayContext(String metricName) {
+        switch (metricName) {
+            case "makespan":
+                return "total job completion time";
+            case "energyConsumption":
+                return "datacenter energy consumption";
+            case "resourceUtilization":
+                return "compute resource utilization";
+            case "responseTime":
+                return "average task response time";
+            case "loadBalance":
+            case "loadImbalance":
+                return "workload distribution balance";
+            default:
+                return "this metric";
         }
     }
     
