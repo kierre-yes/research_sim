@@ -113,12 +113,10 @@ public class ComparisonService {
         
         SimulationProgressHolder.setCurrentIteration(totalComparisons, totalComparisons, "Statistical Analysis");
         
-        // Perform paired t-test analysis
         TTestResults tTestResults = performPairedTTest(eacoResults, epsoResults, request);
-        /**
-         * I generate statistical interpretations using the new analysis service
-         * to provide meaningful explanations instead of just raw numbers
-         */
+        
+        performWilcoxonSignedRankTest(tTestResults, eacoResults, epsoResults);
+        
         Map<String, Object> statisticalInterpretation = analysisService.generateStatisticalInterpretation(tTestResults);
         tTestResults.setInterpretation(statisticalInterpretation);
         
@@ -154,6 +152,33 @@ public class ComparisonService {
         logger.info("Comparison completed in {} ms", comparison.getTotalExecutionTime());
         
         return comparison;
+    }
+    
+    private void performWilcoxonSignedRankTest(TTestResults results,
+                                                IterationResults eacoResults,
+                                                IterationResults epsoResults) {
+        logger.info("Performing Wilcoxon signed-rank test analysis");
+        
+        List<SimulationResults> eacoList = eacoResults.getIndividualResults();
+        List<SimulationResults> epsoList = epsoResults.getIndividualResults();
+        
+        String[] metrics = {"makespan", "energyConsumption", "resourceUtilization",
+                          "responseTime", "loadBalance"};
+        
+        Map<String, TTestResults.WilcoxonTest> wilcoxonTests = new HashMap<>();
+        
+        for (String metric : metrics) {
+            TTestResults.WilcoxonTest test = calculateWilcoxonTest(
+                extractMetricValues(eacoList, metric),
+                extractMetricValues(epsoList, metric),
+                metric
+            );
+            wilcoxonTests.put(metric, test);
+        }
+        
+        results.setWilcoxonTests(wilcoxonTests);
+        
+        logger.info("Wilcoxon signed-rank test analysis completed for {} metrics", metrics.length);
     }
     
     /**
@@ -625,5 +650,190 @@ public class ComparisonService {
     private String computeDatasetId(String path) {
         // Delegate to utility class to avoid duplication
         return ConfigurationSnapshotUtil.computeDatasetId(path);
+    }
+    
+    private double[] rankAbsoluteDifferences(double[] differences) {
+        int n = differences.length;
+        double[] ranks = new double[n];
+        double[] absDiffs = new double[n];
+        
+        for (int i = 0; i < n; i++) {
+            absDiffs[i] = Math.abs(differences[i]);
+        }
+        
+        for (int i = 0; i < n; i++) {
+            if (differences[i] == 0.0) {
+                ranks[i] = 0.0;
+                continue;
+            }
+            
+            int smallerCount = 0;
+            for (int j = 0; j < n; j++) {
+                if (differences[j] != 0.0 && absDiffs[j] < absDiffs[i]) {
+                    smallerCount++;
+                }
+            }
+            
+            ranks[i] = smallerCount + 1;
+        }
+        
+        return ranks;
+    }
+    
+    private double calculateWilcoxonZScore(double testStatistic, int n) {
+        if (n < 2) {
+            return 0.0;
+        }
+        
+        double expectedValue = n * (n + 1) / 4.0;
+        double variance = n * (n + 1) * (2 * n + 1) / 24.0;
+        double standardDeviation = Math.sqrt(variance);
+        
+        if (standardDeviation == 0.0) {
+            return 0.0;
+        }
+        
+        double continuityCorrection;
+        if (testStatistic < expectedValue) {
+            continuityCorrection = -0.5;
+        } else {
+            continuityCorrection = 0.5;
+        }
+        
+        double zScore = (testStatistic - expectedValue + continuityCorrection) / standardDeviation;
+        
+        return zScore;
+    }
+    
+    private double calculateNormalCDF(double z) {
+        return 0.5 * (1.0 + erf(z / Math.sqrt(2.0)));
+    }
+    
+    private double erf(double x) {
+        double a1 =  0.254829592;
+        double a2 = -0.284496736;
+        double a3 =  1.421413741;
+        double a4 = -1.453152027;
+        double a5 =  1.061405429;
+        double p  =  0.3275911;
+        
+        int sign = (x < 0) ? -1 : 1;
+        x = Math.abs(x);
+        
+        double t = 1.0 / (1.0 + p * x);
+        double y = 1.0 - (((((a5 * t + a4) * t) + a3) * t + a2) * t + a1) * t * Math.exp(-x * x);
+        
+        return sign * y;
+    }
+    
+    private TTestResults.WilcoxonTest calculateWilcoxonTest(double[] eacoValues,
+                                                             double[] epsoValues,
+                                                             String metricName) {
+        TTestResults.WilcoxonTest test = new TTestResults.WilcoxonTest();
+        test.setMetricName(metricName);
+        
+        int n = Math.min(eacoValues.length, epsoValues.length);
+        
+        if (eacoValues.length > n) {
+            eacoValues = Arrays.copyOf(eacoValues, n);
+        }
+        if (epsoValues.length > n) {
+            epsoValues = Arrays.copyOf(epsoValues, n);
+        }
+        
+        double[] differences = new double[n];
+        for (int i = 0; i < n; i++) {
+            differences[i] = eacoValues[i] - epsoValues[i];
+        }
+        
+        double[] ranks = rankAbsoluteDifferences(differences);
+        
+        double positiveSum = 0.0;
+        double negativeSum = 0.0;
+        int nonZeroCount = 0;
+        
+        for (int i = 0; i < n; i++) {
+            if (differences[i] != 0.0) {
+                nonZeroCount++;
+                double signedRank = Math.signum(differences[i]) * ranks[i];
+                if (signedRank > 0) {
+                    positiveSum += signedRank;
+                } else {
+                    negativeSum += signedRank;
+                }
+            }
+        }
+        
+        test.setPositiveSum(positiveSum);
+        test.setNegativeSum(negativeSum);
+        test.setSampleSize(nonZeroCount);
+        
+        if (nonZeroCount < 2) {
+            test.setTestStatistic(0.0);
+            test.setZScore(0.0);
+            test.setPValue(1.0);
+            test.setSignificant(false);
+            test.setBetterAlgorithm("None");
+            test.setImprovementPercentage(0.0);
+            test.setEffectSizeR(0.0);
+            test.setEffectSize("Negligible");
+            return test;
+        }
+        
+        double testStatistic = Math.min(Math.abs(positiveSum), Math.abs(negativeSum));
+        test.setTestStatistic(testStatistic);
+        
+        double zScore = calculateWilcoxonZScore(testStatistic, nonZeroCount);
+        test.setZScore(zScore);
+        
+        double pValue = 2.0 * (1.0 - calculateNormalCDF(Math.abs(zScore)));
+        test.setPValue(pValue);
+        
+        test.setSignificant(pValue < 0.05);
+        
+        double effectSizeR = Math.abs(zScore) / Math.sqrt(nonZeroCount);
+        test.setEffectSizeR(effectSizeR);
+        
+        if (effectSizeR < 0.1) {
+            test.setEffectSize("Negligible");
+        } else if (effectSizeR < 0.3) {
+            test.setEffectSize("Small");
+        } else if (effectSizeR < 0.5) {
+            test.setEffectSize("Medium");
+        } else {
+            test.setEffectSize("Large");
+        }
+        
+        boolean isLowerBetter = isLowerBetterMetric(metricName);
+        
+        double eacoMean = Arrays.stream(eacoValues).average().orElse(1.0);
+        double epsoMean = Arrays.stream(epsoValues).average().orElse(1.0);
+        if (eacoMean == 0.0) eacoMean = 1.0;
+        if (epsoMean == 0.0) epsoMean = 1.0;
+        
+        double meanDiff = epsoMean - eacoMean;
+        
+        if (meanDiff < 0) {
+            if (isLowerBetter) {
+                test.setBetterAlgorithm("EPSO");
+                test.setImprovementPercentage(Math.abs(meanDiff / eacoMean) * 100);
+            } else {
+                test.setBetterAlgorithm("EACO");
+                test.setImprovementPercentage(Math.abs(meanDiff / epsoMean) * 100);
+            }
+        } else if (meanDiff > 0) {
+            if (isLowerBetter) {
+                test.setBetterAlgorithm("EACO");
+                test.setImprovementPercentage(Math.abs(meanDiff / epsoMean) * 100);
+            } else {
+                test.setBetterAlgorithm("EPSO");
+                test.setImprovementPercentage(Math.abs(meanDiff / eacoMean) * 100);
+            }
+        } else {
+            test.setBetterAlgorithm("None");
+            test.setImprovementPercentage(0.0);
+        }
+        
+        return test;
     }
 }
