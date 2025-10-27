@@ -183,12 +183,12 @@ public class ApiController {
     }
     
     /**
-     * Run comparison between EACO and EPSO with paired t-test statistical analysis
-     * This endpoint implements the methodology from the manuscript for statistical validation
+     * Run comparison between EACO and EPSO with statistical analysis
+     * Performs both paired t-test and Wilcoxon signed-rank test
      */
     @PostMapping("/compare")
     @Operation(summary = "Compare EPSO and EACO algorithms", 
-              description = "Run both algorithms and perform statistical comparison with paired t-test analysis")
+              description = "Run both algorithms and perform statistical comparison with paired t-test and Wilcoxon signed-rank test")
     @ApiResponses(value = {
         @ApiResponse(responseCode = "200", description = "Comparison completed successfully",
                     content = @Content(schema = @Schema(implementation = ComparisonResults.class))),
