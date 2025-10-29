@@ -115,9 +115,22 @@ public class ComparisonService {
         
         TTestResults tTestResults = performPairedTTest(eacoResults, epsoResults, request);
         
+        performNormalityTests(tTestResults, eacoResults, epsoResults);
+        
         performWilcoxonSignedRankTest(tTestResults, eacoResults, epsoResults);
         
         Map<String, Object> statisticalInterpretation = analysisService.generateStatisticalInterpretation(tTestResults);
+        
+        if (tTestResults.getNormalityTests() != null && !tTestResults.getNormalityTests().isEmpty()) {
+            Map<String, Object> normalityInterpretation = analysisService.generateNormalityInterpretation(tTestResults);
+            statisticalInterpretation.put("normalityAnalysis", normalityInterpretation);
+        }
+        
+        if (tTestResults.getWilcoxonTests() != null && !tTestResults.getWilcoxonTests().isEmpty()) {
+            Map<String, Object> wilcoxonInterpretation = analysisService.generateWilcoxonInterpretation(tTestResults);
+            statisticalInterpretation.put("wilcoxonAnalysis", wilcoxonInterpretation);
+        }
+        
         tTestResults.setInterpretation(statisticalInterpretation);
         
         // Build comparison results
@@ -152,6 +165,93 @@ public class ComparisonService {
         logger.info("Comparison completed in {} ms", comparison.getTotalExecutionTime());
         
         return comparison;
+    }
+    
+    private void performNormalityTests(TTestResults results,
+                                       IterationResults eacoResults,
+                                       IterationResults epsoResults) {
+        logger.info("Performing Anderson-Darling normality tests");
+        
+        List<SimulationResults> eacoList = eacoResults.getIndividualResults();
+        List<SimulationResults> epsoList = epsoResults.getIndividualResults();
+        
+        String[] metrics = {"makespan", "energyConsumption", "resourceUtilization",
+                          "responseTime", "loadBalance"};
+        
+        Map<String, TTestResults.NormalityTest> normalityTests = new HashMap<>();
+        
+        for (String metric : metrics) {
+            double[] eacoValues = extractMetricValues(eacoList, metric);
+            double[] epsoValues = extractMetricValues(epsoList, metric);
+            
+            TTestResults.NormalityTest test = performShapiroWilkTest(eacoValues, epsoValues, metric);
+            normalityTests.put(metric, test);
+        }
+        
+        results.setNormalityTests(normalityTests);
+        
+        logger.info("Normality testing completed for {} metrics", metrics.length);
+    }
+    
+    private TTestResults.NormalityTest performShapiroWilkTest(double[] eacoValues,
+                                                               double[] epsoValues,
+                                                               String metricName) {
+        TTestResults.NormalityTest test = new TTestResults.NormalityTest();
+        test.setMetricName(metricName);
+        
+        int n = Math.min(eacoValues.length, epsoValues.length);
+        double[] differences = new double[n];
+        
+        for (int i = 0; i < n; i++) {
+            differences[i] = eacoValues[i] - epsoValues[i];
+        }
+        
+        if (n < 3) {
+            test.setTestStatistic(1.0);
+            test.setPValue(1.0);
+            test.setNormal(true);
+            test.setRecommendation("Paired T-Test (insufficient data for normality test)");
+            test.setInterpretation("Sample size too small (n < 3) for Anderson-Darling test. Assuming normality by default.");
+            return test;
+        }
+        
+        try {
+            ShapiroWilkResult swResult = calculateShapiroWilk(differences);
+            double wStatistic = swResult.wStatistic;
+            double pValue = swResult.pValue;
+            
+            boolean isNormal = pValue > 0.05;
+            
+            test.setTestStatistic(wStatistic);
+            test.setPValue(pValue);
+            test.setNormal(isNormal);
+            
+            if (isNormal) {
+                test.setRecommendation("Paired T-Test");
+                test.setInterpretation(String.format(
+                    "Differences follow normal distribution (A²=%.4f, p=%.4f). " +
+                    "Paired t-test assumptions satisfied. T-test results are reliable and preferred.",
+                    wStatistic, pValue
+                ));
+            } else {
+                test.setRecommendation("Wilcoxon Signed-Rank Test");
+                test.setInterpretation(String.format(
+                    "Differences deviate from normal distribution (A²=%.4f, p=%.4f). " +
+                    "Parametric assumptions violated. Wilcoxon signed-rank test is more appropriate and provides robust conclusions.",
+                    wStatistic, pValue
+                ));
+            }
+            
+        } catch (Exception e) {
+            logger.warn("Shapiro-Wilk test failed for {}: {}", metricName, e.getMessage());
+            test.setTestStatistic(1.0);
+            test.setPValue(1.0);
+            test.setNormal(true);
+            test.setRecommendation("Both Tests");
+            test.setInterpretation("Normality test inconclusive. Review both parametric and non-parametric results.");
+        }
+        
+        return test;
     }
     
     private void performWilcoxonSignedRankTest(TTestResults results,
@@ -726,6 +826,52 @@ public class ComparisonService {
         return sign * y;
     }
     
+    private double[] calculateHodgesLehmannCI(double[] differences, int nonZeroCount, double alpha) {
+        if (nonZeroCount < 5) {
+            return new double[]{0.0, 0.0};
+        }
+        
+        List<Double> nonZeroDiffs = new ArrayList<>();
+        for (double diff : differences) {
+            if (diff != 0.0) {
+                nonZeroDiffs.add(diff);
+            }
+        }
+        
+        List<Double> walshAverages = new ArrayList<>();
+        int n = nonZeroDiffs.size();
+        
+        for (int i = 0; i < n; i++) {
+            for (int j = i; j < n; j++) {
+                double avg = (nonZeroDiffs.get(i) + nonZeroDiffs.get(j)) / 2.0;
+                walshAverages.add(avg);
+            }
+        }
+        
+        Collections.sort(walshAverages);
+        
+        int m = walshAverages.size();
+        
+        double z = 1.96;
+        if (alpha == 0.01) {
+            z = 2.576;
+        } else if (alpha == 0.10) {
+            z = 1.645;
+        }
+        
+        double expectedValue = n * (n + 1) / 4.0;
+        double variance = n * (n + 1) * (2 * n + 1) / 24.0;
+        double k = expectedValue - z * Math.sqrt(variance);
+        
+        int lowerIndex = Math.max(0, (int) Math.floor(k) - 1);
+        int upperIndex = Math.min(m - 1, m - lowerIndex - 1);
+        
+        lowerIndex = Math.max(0, Math.min(m - 1, lowerIndex));
+        upperIndex = Math.max(0, Math.min(m - 1, upperIndex));
+        
+        return new double[]{walshAverages.get(lowerIndex), walshAverages.get(upperIndex)};
+    }
+    
     private TTestResults.WilcoxonTest calculateWilcoxonTest(double[] eacoValues,
                                                              double[] epsoValues,
                                                              String metricName) {
@@ -741,10 +887,31 @@ public class ComparisonService {
             epsoValues = Arrays.copyOf(epsoValues, n);
         }
         
+        double eacoMedian = calculateMedian(eacoValues);
+        double epsoMedian = calculateMedian(epsoValues);
+        double eacoMAD = calculateMAD(eacoValues, eacoMedian);
+        double epsoMAD = calculateMAD(epsoValues, epsoMedian);
+        double eacoIQR = calculateIQR(eacoValues);
+        double epsoIQR = calculateIQR(epsoValues);
+        
+        test.setEacoMedian(eacoMedian);
+        test.setEpsoMedian(epsoMedian);
+        test.setEacoMAD(eacoMAD);
+        test.setEpsoMAD(epsoMAD);
+        test.setEacoIQR(eacoIQR);
+        test.setEpsoIQR(epsoIQR);
+        
         double[] differences = new double[n];
+        int zeroCount = 0;
         for (int i = 0; i < n; i++) {
             differences[i] = eacoValues[i] - epsoValues[i];
+            if (differences[i] == 0.0) {
+                zeroCount++;
+            }
         }
+        
+        int tiesCount = detectTies(differences);
+        boolean hasTies = tiesCount > 0;
         
         double[] ranks = rankAbsoluteDifferences(differences);
         
@@ -804,6 +971,10 @@ public class ComparisonService {
             test.setEffectSize("Large");
         }
         
+        double[] ci = calculateHodgesLehmannCI(differences, nonZeroCount, 0.05);
+        test.setCiLower(ci[0]);
+        test.setCiUpper(ci[1]);
+        
         boolean isLowerBetter = isLowerBetterMetric(metricName);
         
         double eacoMean = Arrays.stream(eacoValues).average().orElse(1.0);
@@ -834,6 +1005,179 @@ public class ComparisonService {
             test.setImprovementPercentage(0.0);
         }
         
+        test.setVariabilityInterpretation(
+            generateWilcoxonVariabilityInterpretation(eacoMAD, epsoMAD, eacoMedian, epsoMedian, metricName)
+        );
+        
+        test.setZeroExclusions(zeroCount);
+        test.setTiesPresent(hasTies);
+        test.setTiesCount(tiesCount);
+        
         return test;
+    }
+    
+    private double calculateMedian(double[] values) {
+        if (values == null || values.length == 0) {
+            return 0.0;
+        }
+        double[] sorted = Arrays.copyOf(values, values.length);
+        Arrays.sort(sorted);
+        int n = sorted.length;
+        if (n % 2 == 0) {
+            return (sorted[n / 2 - 1] + sorted[n / 2]) / 2.0;
+        } else {
+            return sorted[n / 2];
+        }
+    }
+    
+    private double calculateMAD(double[] values, double median) {
+        if (values == null || values.length == 0) {
+            return 0.0;
+        }
+        double[] deviations = new double[values.length];
+        for (int i = 0; i < values.length; i++) {
+            deviations[i] = Math.abs(values[i] - median);
+        }
+        return calculateMedian(deviations);
+    }
+    
+    private double calculateIQR(double[] values) {
+        if (values == null || values.length < 4) {
+            return 0.0;
+        }
+        double[] sorted = Arrays.copyOf(values, values.length);
+        Arrays.sort(sorted);
+        int n = sorted.length;
+        
+        int q1Index = n / 4;
+        int q3Index = 3 * n / 4;
+        
+        double q1 = sorted[q1Index];
+        double q3 = sorted[q3Index];
+        
+        return q3 - q1;
+    }
+    
+    private int detectTies(double[] differences) {
+        Map<Double, Integer> absValueCounts = new HashMap<>();
+        
+        for (double diff : differences) {
+            if (diff != 0.0) {
+                double absDiff = Math.abs(diff);
+                absValueCounts.put(absDiff, absValueCounts.getOrDefault(absDiff, 0) + 1);
+            }
+        }
+        
+        int tiesCount = 0;
+        for (int count : absValueCounts.values()) {
+            if (count > 1) {
+                tiesCount += count;
+            }
+        }
+        
+        return tiesCount;
+    }
+    
+    private static class ShapiroWilkResult {
+        double wStatistic;
+        double pValue;
+        
+        ShapiroWilkResult(double w, double p) {
+            this.wStatistic = w;
+            this.pValue = p;
+        }
+    }
+    
+    private ShapiroWilkResult calculateShapiroWilk(double[] data) {
+        int n = data.length;
+        
+        if (n < 3 || n > 5000) {
+            return new ShapiroWilkResult(1.0, 1.0);
+        }
+        
+        DescriptiveStatistics stats = new DescriptiveStatistics(data);
+        double mean = stats.getMean();
+        double stdDev = stats.getStandardDeviation();
+        
+        if (stdDev == 0.0) {
+            return new ShapiroWilkResult(1.0, 1.0);
+        }
+        
+        double[] standardized = new double[n];
+        for (int i = 0; i < n; i++) {
+            standardized[i] = (data[i] - mean) / stdDev;
+        }
+        Arrays.sort(standardized);
+        
+        double adStatistic = 0.0;
+        for (int i = 0; i < n; i++) {
+            double zi = standardized[i];
+            double phi = calculateNormalCDF(zi);
+            
+            if (phi > 0 && phi < 1) {
+                adStatistic += (2 * i + 1) * Math.log(phi) + (2 * (n - i) - 1) * Math.log(1 - phi);
+            }
+        }
+        adStatistic = -n - adStatistic / n;
+        
+        double adAdjusted = adStatistic * (1.0 + 0.75/n + 2.25/(n*n));
+        
+        double pValue;
+        if (adAdjusted < 0.2) {
+            pValue = 1.0 - Math.exp(-13.436 + 101.14 * adAdjusted - 223.73 * adAdjusted * adAdjusted);
+        } else if (adAdjusted < 0.34) {
+            pValue = 1.0 - Math.exp(-8.318 + 42.796 * adAdjusted - 59.938 * adAdjusted * adAdjusted);
+        } else if (adAdjusted < 0.6) {
+            pValue = Math.exp(0.9177 - 4.279 * adAdjusted - 1.38 * adAdjusted * adAdjusted);
+        } else if (adAdjusted < 10) {
+            pValue = Math.exp(1.2937 - 5.709 * adAdjusted + 0.0186 * adAdjusted * adAdjusted);
+        } else {
+            pValue = 3.7e-24;
+        }
+        
+        pValue = Math.max(0.0, Math.min(1.0, pValue));
+        
+        return new ShapiroWilkResult(adStatistic, pValue);
+    }
+    
+    private String generateWilcoxonVariabilityInterpretation(double eacoMAD, double epsoMAD, 
+                                                              double eacoMedian, double epsoMedian, 
+                                                              String metricName) {
+        double eacoQCD = eacoMedian != 0.0 ? (eacoMAD / Math.abs(eacoMedian)) * 100 : 0.0;
+        double epsoQCD = epsoMedian != 0.0 ? (epsoMAD / Math.abs(epsoMedian)) * 100 : 0.0;
+        
+        String eacoStability = categorizeStability(eacoQCD);
+        String epsoStability = categorizeStability(epsoQCD);
+        
+        StringBuilder interpretation = new StringBuilder();
+        
+        interpretation.append(String.format(
+            "EACO: MAD=%.4f, QCD=%.2f%% (%s). EPSO: MAD=%.4f, QCD=%.2f%% (%s). ",
+            eacoMAD, eacoQCD, eacoStability,
+            epsoMAD, epsoQCD, epsoStability
+        ));
+        
+        double qcdDifference = Math.abs(eacoQCD - epsoQCD);
+        
+        if (qcdDifference < 5.0) {
+            interpretation.append("Both algorithms demonstrate similar stability across iterations. ");
+        } else if (eacoQCD < epsoQCD) {
+            double improvement = ((epsoQCD - eacoQCD) / epsoQCD) * 100;
+            interpretation.append(String.format(
+                "EACO is more stable than EPSO (%.1f%% lower variability), indicating more predictable and reliable performance in production deployments. ",
+                improvement
+            ));
+        } else {
+            double improvement = ((eacoQCD - epsoQCD) / eacoQCD) * 100;
+            interpretation.append(String.format(
+                "EPSO is more stable than EACO (%.1f%% lower variability), indicating more predictable and reliable performance in production deployments. ",
+                improvement
+            ));
+        }
+        
+        double avgQCD = (eacoQCD + epsoQCD) / 2.0;
+        interpretation.append(getStabilityImplication(avgQCD, metricName));
+        
+        return interpretation.toString();
     }
 }

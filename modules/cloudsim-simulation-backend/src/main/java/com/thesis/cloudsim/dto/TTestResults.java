@@ -17,6 +17,7 @@ public class TTestResults {
     private int sampleSize;
     private Map<String, MetricTest> metricTests;
     private Map<String, WilcoxonTest> wilcoxonTests;
+    private Map<String, NormalityTest> normalityTests;
     private String overallWinner;
     private int significantDifferences;
     private Map<String, Object> plotPaths; // Optional: MATLAB visualization paths
@@ -98,9 +99,25 @@ public class TTestResults {
         private double pValue;              // Two-tailed p-value from normal approximation
         private int sampleSize;             // n = number of non-zero differences
         
+        private int zeroExclusions;         // Count of zero differences excluded 
+        private boolean tiesPresent;        // Whether tied ranks were detected
+        private int tiesCount;              // Number of tied absolute differences
+        
+        private double eacoMedian;          // Median of EACO measurements
+        private double epsoMedian;          // Median of EPSO measurements
+        private double eacoMAD;             // Median Absolute Deviation of EACO (robust std equivalent)
+        private double epsoMAD;             // Median Absolute Deviation of EPSO (robust std equivalent)
+        private double eacoIQR;             // Interquartile Range of EACO (Q3 - Q1)
+        private double epsoIQR;             // Interquartile Range of EPSO (Q3 - Q1)
+        private String variabilityInterpretation;  // Interpretation of algorithm variability
+        
         // Effect size
         private double effectSizeR;         // r = |Z| / √n, range [0,1]
         private String effectSize;          // Interpretation: Negligible/Small/Medium/Large
+        
+        // for confidence interval i use Hodges-Lehmann estimator
+        private double ciLower;             // 95% CI lower bound for median difference
+        private double ciUpper;             // 95% CI upper bound for median difference
         
         // Results interpretation
         private boolean significant;        // p < alpha
@@ -128,6 +145,30 @@ public class TTestResults {
             if (pValue < 0.01) return "**";
             if (pValue < 0.05) return "*";
             return "ns";
+        }
+    }
+    
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class NormalityTest {
+        private String metricName;
+        
+        private double testStatistic;       
+        private double pValue;              
+        private boolean isNormal;           
+        
+        private String recommendation;      
+        private String interpretation;     
+        
+        public String getFormattedResult() {
+            if (isNormal) {
+                return String.format("%s: Normal distribution detected (A²=%.4f, p=%.4f). Paired t-test preferred.",
+                    metricName, testStatistic, pValue);
+            } else {
+                return String.format("%s: Non-normal distribution detected (A²=%.4f, p=%.4f). Wilcoxon test preferred.",
+                    metricName, testStatistic, pValue);
+            }
         }
     }
 }
