@@ -229,16 +229,16 @@ public class ComparisonService {
             if (isNormal) {
                 test.setRecommendation("Paired T-Test");
                 test.setInterpretation(String.format(
-                    "Differences follow normal distribution (A²=%.4f, p=%.4f). " +
-                    "Paired t-test assumptions satisfied. T-test results are reliable and preferred.",
-                    wStatistic, pValue
+                    "The data follows a bell curve pattern (p=%.4f, which is > 0.05). " +
+                    "This means the t-test results are trustworthy and should be used for this metric.",
+                    pValue
                 ));
             } else {
                 test.setRecommendation("Wilcoxon Signed-Rank Test");
                 test.setInterpretation(String.format(
-                    "Differences deviate from normal distribution (A²=%.4f, p=%.4f). " +
-                    "Parametric assumptions violated. Wilcoxon signed-rank test is more appropriate and provides robust conclusions.",
-                    wStatistic, pValue
+                    "The data doesn't follow a bell curve pattern (p=%.4f, which is ≤ 0.05). " +
+                    "Use the Wilcoxon test results for this metric instead - they're more reliable when data isn't bell-curve shaped.",
+                    pValue
                 ));
             }
             
@@ -637,25 +637,25 @@ public class ComparisonService {
         StringBuilder interpretation = new StringBuilder();
         
         interpretation.append(String.format(
-            "EACO: σ=%.4f, CV=%.2f%% (%s). EPSO: σ=%.4f, CV=%.2f%% (%s). ",
-            eacoStd, eacoCV, eacoStability,
-            epsoStd, epsoCV, epsoStability
+            "Consistency check - EACO varies by %.2f%% (%s), EPSO varies by %.2f%% (%s) across test runs. ",
+            eacoCV, eacoStability,
+            epsoCV, epsoStability
         ));
         
         double cvDifference = Math.abs(eacoCV - epsoCV);
         
         if (cvDifference < 5.0) {
-            interpretation.append("Both algorithms demonstrate similar stability across iterations. ");
+            interpretation.append("Both algorithms show similar consistency - you'll get reliable results from either. ");
         } else if (eacoCV < epsoCV) {
             double improvement = ((epsoCV - eacoCV) / epsoCV) * 100;
             interpretation.append(String.format(
-                "EACO is more stable than EPSO (%.1f%% lower variability), indicating more predictable and reliable performance in production deployments. ",
+                "EACO is %.1f%% more consistent than EPSO, meaning it delivers more predictable performance in real deployments. ",
                 improvement
             ));
         } else {
             double improvement = ((eacoCV - epsoCV) / eacoCV) * 100;
             interpretation.append(String.format(
-                "EPSO is more stable than EACO (%.1f%% lower variability), indicating more predictable and reliable performance in production deployments. ",
+                "EPSO is %.1f%% more consistent than EACO, meaning it delivers more predictable performance in real deployments. ",
                 improvement
             ));
         }
@@ -683,26 +683,26 @@ public class ComparisonService {
         
         if (avgCV < 10.0) {
             return String.format(
-                "The results are highly stable for %s (CV < 10%%). This indicates the algorithm produces "
-                + "consistent, reproducible results suitable for SLA guarantees and reliable capacity planning in production environments.",
+                "Excellent news for %s: with less than 10%% variation, the algorithm will perform consistently every time you use it. "
+                + "Perfect for production systems where you need guaranteed performance levels.",
                 metricContext
             );
         } else if (avgCV < 30.0) {
             return String.format(
-                "The results are stable for %s (CV < 30%%). This demonstrates reliable performance across iterations, "
-                + "which is acceptable for most cloud workloads and production deployments.",
+                "Good consistency for %s: with less than 30%% variation, the algorithm is reliable enough for most real-world uses. "
+                + "Performance won't surprise you.",
                 metricContext
             );
         } else if (avgCV < 50.0) {
             return String.format(
-                "The results are moderately stable for %s (CV < 50%%). Some performance variation exists across runs. "
-                + "Multiple evaluation runs may be needed for critical deployments to ensure consistent behavior.",
+                "Moderate consistency for %s: variation up to 50%% means performance can fluctuate noticeably between runs. "
+                + "Run multiple tests before deploying to critical systems.",
                 metricContext
             );
         } else {
             return String.format(
-                "The results are unstable for %s (CV ≥ 50%%). High variability indicates unpredictable performance. "
-                + "The algorithm is sensitive to initial conditions or workload characteristics. Multiple runs and statistical analysis are essential for reliable conclusions.",
+                "Warning for %s: over 50%% variation means performance is unpredictable. "
+                + "The algorithm is sensitive to starting conditions or workload patterns. You'll need multiple test runs to understand typical behavior.",
                 metricContext
             );
         }
@@ -1152,25 +1152,25 @@ public class ComparisonService {
         StringBuilder interpretation = new StringBuilder();
         
         interpretation.append(String.format(
-            "EACO: MAD=%.4f, QCD=%.2f%% (%s). EPSO: MAD=%.4f, QCD=%.2f%% (%s). ",
-            eacoMAD, eacoQCD, eacoStability,
-            epsoMAD, epsoQCD, epsoStability
+            "Consistency (using median-based measurement): EACO varies by %.2f%% (%s), EPSO varies by %.2f%% (%s). ",
+            eacoQCD, eacoStability,
+            epsoQCD, epsoStability
         ));
         
         double qcdDifference = Math.abs(eacoQCD - epsoQCD);
         
         if (qcdDifference < 5.0) {
-            interpretation.append("Both algorithms demonstrate similar stability across iterations. ");
+            interpretation.append("Both algorithms show similar consistency in their typical performance. ");
         } else if (eacoQCD < epsoQCD) {
             double improvement = ((epsoQCD - eacoQCD) / epsoQCD) * 100;
             interpretation.append(String.format(
-                "EACO is more stable than EPSO (%.1f%% lower variability), indicating more predictable and reliable performance in production deployments. ",
+                "EACO is %.1f%% more consistent than EPSO, giving you more predictable results in production. ",
                 improvement
             ));
         } else {
             double improvement = ((eacoQCD - epsoQCD) / eacoQCD) * 100;
             interpretation.append(String.format(
-                "EPSO is more stable than EACO (%.1f%% lower variability), indicating more predictable and reliable performance in production deployments. ",
+                "EPSO is %.1f%% more consistent than EACO, giving you more predictable results in production. ",
                 improvement
             ));
         }

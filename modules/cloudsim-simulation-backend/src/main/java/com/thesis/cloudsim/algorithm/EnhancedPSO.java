@@ -58,15 +58,17 @@ public class EnhancedPSO implements ISchedulingAlgorithm {
 
     @Override
     public Map<Cloudlet, Vm> schedule(List<Cloudlet> cloudlets, List<Vm> vms, AlgorithmParameters parameters) {
-        // I create defensive copies so that the original lists aren't modified
         this.cloudlets = new ArrayList<>(cloudlets);
         this.vms = new ArrayList<>(vms);
         this.parameters = parameters;
         
         initializeParticles();
         
-        // Main PSO optimization loop - each iteration updates all particles towards better solutions
         for (currentIteration = 0; currentIteration < parameters.getInt(AlgorithmParameters.MAX_ITERATIONS); currentIteration++) {
+            if (com.thesis.cloudsim.simulation.EnhancedSimulationManager.isCancellationRequested()) {
+                throw new RuntimeException("Simulation cancelled during PSO optimization");
+            }
+            
             updateParticles();
             updateGlobalBest();
             
