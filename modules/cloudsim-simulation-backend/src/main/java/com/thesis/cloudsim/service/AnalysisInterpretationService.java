@@ -53,7 +53,8 @@ public class AnalysisInterpretationService {
         interpretation.put("effectSizeExplanation", generateEffectSizeExplanation(tTestResults));
         
         interpretation.put("confidenceExplanation", String.format(
-            "We can determine statistically significant performance differences with 95%% confidence (α = %.2f).",
+            "Our statistical analysis uses a 95%% confidence level, meaning we're 95%% certain our conclusions are correct and not due to random chance. We accept only a %.0f%% risk of being wrong (α = %.2f).",
+            tTestResults.getAlpha() * 100,
             tTestResults.getAlpha()
         ));
         
@@ -153,7 +154,7 @@ public class AnalysisInterpretationService {
         
         if (nonZeroCount < totalSampleSize) {
             int zeroCount = totalSampleSize - nonZeroCount;
-            assumptions.append(String.format("ℹ️ %d zero difference(s) excluded per standard Wilcoxon methodology (Pratt, 1959). ", zeroCount));
+            assumptions.append(String.format("Info: %d zero difference(s) excluded per standard Wilcoxon methodology (Pratt, 1959). ", zeroCount));
         }
         
         return assumptions.toString();
@@ -176,9 +177,9 @@ public class AnalysisInterpretationService {
         interpretation.put("effectSizeExplanation", generateWilcoxonEffectSizeExplanation(tTestResults));
         
         interpretation.put("confidenceExplanation", String.format(
-            "We determine statistical significance using distribution-free methods with 95%% confidence (α = %.2f). " +
-            "The Wilcoxon signed-rank test requires no assumptions about data normality. " +
-            "This provides robust conclusions even when parametric assumptions are violated.",
+            "We used a robust statistical method (Wilcoxon test) with 95%% confidence. Unlike other tests, this one works even when your data isn't perfectly bell-curve shaped. " +
+            "Think of it as a more flexible approach that ranks performance differences rather than assuming any specific pattern. Only %.0f%% risk of being wrong (α = %.2f).",
+            tTestResults.getAlpha() * 100,
             tTestResults.getAlpha()
         ));
         
@@ -368,26 +369,25 @@ public class AnalysisInterpretationService {
         
         if ("No clear winner".equals(winner)) {
             return String.format(
-                "Statistical analysis reveals no clear winner between algorithms. " +
-                "%d out of %d metrics showed significant differences (p < 0.05). " +
-                "Both algorithms perform similarly under current conditions.",
-                significantMetrics, totalMetrics
+                "Bottom line: Both algorithms perform about the same. " +
+                "Out of %d performance metrics we tested, only %d showed meaningful differences (less than 5%% chance of being random). " +
+                "You can safely use either algorithm for this type of workload.",
+                totalMetrics, significantMetrics
             );
         } else {
             if (winnerWins == significantMetrics) {
                 return String.format(
-                    "%s shows statistically superior performance. " +
-                    "We observed significant improvements in %d out of %d metrics (p < 0.05). " +
-                    "The evidence strongly supports using %s for this workload type.",
+                    "Clear winner: %s performs better overall. " +
+                    "It won on %d out of %d metrics with strong statistical confidence (less than 5%% chance these results are random). " +
+                    "We strongly recommend using %s for this workload type.",
                     winner, significantMetrics, totalMetrics, winner
                 );
             } else {
                 return String.format(
-                    "%s shows statistically superior performance overall. " +
-                    "We observed significant differences in %d out of %d metrics (p < 0.05), " +
-                    "with %s winning %d metrics. " +
-                    "The evidence supports using %s for this workload type.",
-                    winner, significantMetrics, totalMetrics, winner, winnerWins, winner
+                    "Overall winner: %s performs better. " +
+                    "Out of %d metrics tested, %d showed clear differences, with %s winning on %d of them. " +
+                    "We recommend using %s for this workload type, though both algorithms have strengths.",
+                    winner, totalMetrics, significantMetrics, winner, winnerWins, winner
                 );
             }
         }
@@ -396,20 +396,23 @@ public class AnalysisInterpretationService {
     private String interpretMetricTest(String metricName, TTestResults.MetricTest test) {
         if (!test.isSignificant()) {
             return String.format(
-                "No significant difference was detected (p = %.4f). Both algorithms perform similarly for %s.",
-                test.getPValue(), getMetricDisplayName(metricName)
+                "Both algorithms perform similarly for %s. The statistical test found no meaningful difference (p-value = %.4f means there's a %.1f%% probability the difference is just random chance).",
+                getMetricDisplayName(metricName),
+                test.getPValue(),
+                test.getPValue() * 100
             );
         }
         
+        String effectInterpretation = getEffectSizeInterpretation(test.getEffectSize());
+        
         return String.format(
-            "%s shows a significant advantage in %s (p = %.4f). " +
-            "Performance improved by %.1f%% with %s effect size (Cohen's d = %.3f). " +
-            "95%% CI: [%.3f, %.3f]",
+            "%s performs %.1f%% better for %s. This is a %s difference with high statistical confidence (only %.2f%% chance this is random, Cohen's d = %.3f). " +
+            "We're 95%% confident the true improvement is between %.3f and %.3f units.",
             test.getBetterAlgorithm(),
-            getMetricDisplayName(metricName),
-            test.getPValue(),
             test.getImprovementPercentage(),
-            test.getEffectSize().toLowerCase(),
+            getMetricDisplayName(metricName),
+            effectInterpretation,
+            test.getPValue() * 100,
             test.getCohensD(),
             test.getCiLower(),
             test.getCiUpper()
@@ -430,27 +433,27 @@ public class AnalysisInterpretationService {
         }
         
         StringBuilder explanation = new StringBuilder(
-            "Effect sizes show practical significance using cloud computing-specific thresholds: "
+            "Looking at how big these differences really are in practice: "
         );
         
         if (effectCounts.get("Large") > 0) {
-            explanation.append(String.format("%d large effects (substantial practical difference), ", effectCounts.get("Large")));
+            explanation.append(String.format("%d metric(s) show large improvements (you'll clearly notice this difference in real-world use), ", effectCounts.get("Large")));
         }
         if (effectCounts.get("Medium") > 0) {
-            explanation.append(String.format("%d medium effects (moderate practical difference), ", effectCounts.get("Medium")));
+            explanation.append(String.format("%d metric(s) show moderate improvements (definitely worth considering), ", effectCounts.get("Medium")));
         }
         if (effectCounts.get("Small") > 0) {
-            explanation.append(String.format("%d small effects (minor practical difference), ", effectCounts.get("Small")));
+            explanation.append(String.format("%d metric(s) show small improvements (detectable but minor impact), ", effectCounts.get("Small")));
         }
         if (effectCounts.get("Negligible") > 0) {
-            explanation.append(String.format("%d negligible effects, ", effectCounts.get("Negligible")));
+            explanation.append(String.format("%d metric(s) show negligible improvements (too small to matter in practice), ", effectCounts.get("Negligible")));
         }
         
         if (explanation.toString().endsWith(", ")) {
             explanation.setLength(explanation.length() - 2);
         }
         
-        explanation.append(".");
+        explanation.append(". Effect sizes tell us whether a statistically significant difference is actually meaningful in real-world scenarios.");
         return explanation.toString();
     }
     
@@ -467,28 +470,28 @@ public class AnalysisInterpretationService {
         
         if ("No clear winner".equals(winner)) {
             return String.format(
-                "Non-parametric analysis shows no clear winner between algorithms. " +
-                "%d out of %d metrics showed significant median differences using the Wilcoxon signed-rank test (p < 0.05). " +
-                "Both algorithms perform similarly under current conditions with no statistically significant advantage.",
+                "Bottom line (using robust statistical test): Both algorithms are essentially tied. " +
+                "Only %d out of %d metrics showed clear differences (less than 5%% chance of being random). " +
+                "Either algorithm would work well for this workload. " +
+                "This test works with any data pattern, not just bell curves.",
                 significantMetrics, totalMetrics
             );
         } else {
             if (winnerWins == significantMetrics) {
                 return String.format(
-                    "%s shows statistically superior performance using rank-based analysis. " +
-                    "We observed significant improvements in %d out of %d metrics (p < 0.05). " +
-                    "The Wilcoxon signed-rank test provides robust evidence supporting %s for this workload type. " +
-                    "This analysis assumes no normal distribution of performance metrics.",
+                    "Clear winner (using robust ranking method): %s performs better. " +
+                    "It won on %d out of %d metrics with strong confidence (less than 5%% random chance). " +
+                    "We strongly recommend %s for this workload. " +
+                    "This test ranks performance rather than assuming any specific data pattern, making it very reliable.",
                     winner, significantMetrics, totalMetrics, winner
                 );
             } else {
                 return String.format(
-                    "%s shows statistically superior performance overall using rank-based analysis. " +
-                    "We observed significant differences in %d out of %d metrics (p < 0.05), " +
-                    "with %s winning %d metrics. " +
-                    "The Wilcoxon signed-rank test provides robust evidence supporting %s for this workload type. " +
-                    "This analysis assumes no normal distribution of performance metrics.",
-                    winner, significantMetrics, totalMetrics, winner, winnerWins, winner
+                    "Overall winner (using robust ranking method): %s performs better. " +
+                    "Out of %d metrics, %d showed clear differences, with %s winning on %d of them. " +
+                    "We recommend %s for this workload. " +
+                    "This ranking-based test works with any data pattern, providing reliable results.",
+                    winner, totalMetrics, significantMetrics, winner, winnerWins, winner
                 );
             }
         }
@@ -497,17 +500,23 @@ public class AnalysisInterpretationService {
     private String interpretWilcoxonMetricTest(String metricName, TTestResults.WilcoxonTest test) {
         if (!test.isSignificant()) {
             return String.format(
-                "No significant median difference was detected (p = %.4f, W = %.0f). " +
-                "Both algorithms perform similarly for %s based on rank-based analysis.",
-                test.getPValue(), test.getTestStatistic(), getMetricDisplayName(metricName)
+                "Both algorithms perform similarly for %s. There's a %.1f%% probability this difference could be just random variation (p = %.4f), which is too high to declare a winner.",
+                getMetricDisplayName(metricName),
+                test.getPValue() * 100,
+                test.getPValue()
             );
         }
         
         String ciExplanation = "";
         String stabilityInsight = "";
+        String probabilityExplanation = String.format(
+            "If you picked any random test run, there's a %.0f%% chance that %s would outperform the other algorithm.",
+            50 + (test.getEffectSizeR() * 50),
+            test.getBetterAlgorithm()
+        );
         
         if (test.getCiLower() != 0.0 || test.getCiUpper() != 0.0) {
-            ciExplanation = String.format(" 95%% CI for median difference: [%.3f, %.3f].", 
+            ciExplanation = String.format(" We're 95%% confident the true median difference is between %.3f and %.3f.", 
                 test.getCiLower(), test.getCiUpper());
             
             double ciRange = Math.abs(test.getCiUpper() - test.getCiLower());
@@ -516,33 +525,30 @@ public class AnalysisInterpretationService {
             
             if (relativeVariability < 0.3 && test.getEffectSizeR() > 0.5) {
                 stabilityInsight = String.format(
-                    " The tight confidence interval combined with large effect size (r = %.3f) indicates %s demonstrates " +
-                    "consistent, reliable superiority across diverse workload conditions.",
+                    " The narrow range of possible differences plus the strong effect size (r = %.3f) means %s consistently performs better, " +
+                    "not just in lucky runs but across different conditions.",
                     test.getEffectSizeR(), test.getBetterAlgorithm()
                 );
             } else if (test.getEffectSizeR() > 0.7) {
                 stabilityInsight = String.format(
-                    " The very large effect size (r = %.3f) suggests %s maintains robust performance advantages " +
-                    "with minimal sensitivity to workload variations.",
+                    " The very strong effect size (r = %.3f) means %s has a robust advantage that holds up " +
+                    "regardless of workload variations - it's reliably better.",
                     test.getEffectSizeR(), test.getBetterAlgorithm()
                 );
             }
         }
         
+        String effectInterpretation = getEffectSizeInterpretation(test.getEffectSize());
+        
         return String.format(
-            "%s shows a significant advantage in %s (p = %.4f, W = %.0f, Z = %.2f). " +
-            "Performance improved by %.1f%% with %s effect size (rank-biserial r = %.3f). " +
-            "This indicates a %.1f%% probability that %s outperforms the alternative in a randomly selected pair.%s%s",
+            "%s performs %.1f%% better for %s. This is a %s difference with only %.2f%% chance of being random. " +
+            "%s%s%s",
             test.getBetterAlgorithm(),
-            getMetricDisplayName(metricName),
-            test.getPValue(),
-            test.getTestStatistic(),
-            test.getZScore(),
             test.getImprovementPercentage(),
-            test.getEffectSize().toLowerCase(),
-            test.getEffectSizeR(),
-            50 + (test.getEffectSizeR() * 50),
-            test.getBetterAlgorithm(),
+            getMetricDisplayName(metricName),
+            effectInterpretation,
+            test.getPValue() * 100,
+            probabilityExplanation,
             ciExplanation,
             stabilityInsight
         );
@@ -562,27 +568,27 @@ public class AnalysisInterpretationService {
         }
         
         StringBuilder explanation = new StringBuilder(
-            "Rank-biserial correlation (r) shows practical significance using non-parametric effect size measures: "
+            "Looking at how big these performance differences really are: "
         );
         
         if (effectCounts.get("Large") > 0) {
-            explanation.append(String.format("%d large effects (r > 0.5, substantial practical difference), ", effectCounts.get("Large")));
+            explanation.append(String.format("%d metric(s) show large improvements (clearly noticeable in practice), ", effectCounts.get("Large")));
         }
         if (effectCounts.get("Medium") > 0) {
-            explanation.append(String.format("%d medium effects (0.3 < r < 0.5, moderate practical difference), ", effectCounts.get("Medium")));
+            explanation.append(String.format("%d metric(s) show moderate improvements (worth paying attention to), ", effectCounts.get("Medium")));
         }
         if (effectCounts.get("Small") > 0) {
-            explanation.append(String.format("%d small effects (0.1 < r < 0.3, minor practical difference), ", effectCounts.get("Small")));
+            explanation.append(String.format("%d metric(s) show small improvements (detectable but minor), ", effectCounts.get("Small")));
         }
         if (effectCounts.get("Negligible") > 0) {
-            explanation.append(String.format("%d negligible effects (r < 0.1), ", effectCounts.get("Negligible")));
+            explanation.append(String.format("%d metric(s) show negligible improvements (too small to matter), ", effectCounts.get("Negligible")));
         }
         
         if (explanation.toString().endsWith(", ")) {
             explanation.setLength(explanation.length() - 2);
         }
         
-        explanation.append(". These effect sizes measure the strength of association between algorithm choice and performance outcomes.");
+        explanation.append(". Effect size tells you whether a difference is big enough to care about in real-world use.");
         return explanation.toString();
     }
     
@@ -603,27 +609,27 @@ public class AnalysisInterpretationService {
         
         if (normalCount == totalMetrics) {
             conclusion.append(String.format(
-                "All %d metrics follow normal distribution (Anderson-Darling p > 0.05). " +
-                "Paired t-test assumptions are satisfied. T-test results are reliable and provide optimal statistical power. " +
-                "Parametric analysis is appropriate for this dataset.",
+                "Good news: All %d metrics have data that follows a bell curve pattern (normal distribution). " +
+                "This means the standard t-test results are fully trustworthy and give you the most precise answers. " +
+                "No need to second-guess these results.",
                 totalMetrics
             ));
             interpretation.put("preferredTest", "Paired T-Test");
         } else if (nonNormalCount == totalMetrics) {
             conclusion.append(String.format(
-                "All %d metrics deviate from normal distribution (Anderson-Darling p ≤ 0.05). " +
-                "Parametric assumptions are violated. Wilcoxon signed-rank test is strongly preferred " +
-                "as it provides robust, assumption-free conclusions without requiring normality.",
+                "Important: None of the %d metrics follow a bell curve pattern. " +
+                "This means you should trust the Wilcoxon test results instead of the t-test. " +
+                "The Wilcoxon test is designed to work with any data pattern, not just bell curves.",
                 totalMetrics
             ));
             interpretation.put("preferredTest", "Wilcoxon Signed-Rank Test");
         } else {
             conclusion.append(String.format(
-                "Mixed normality results: %d/%d metrics follow normal distribution, %d/%d deviate. " +
-                "For metrics with normal differences, t-test is optimal. " +
-                "For non-normal metrics, Wilcoxon test provides more reliable conclusions. " +
-                "Consider both parametric and non-parametric results for comprehensive analysis.",
-                normalCount, totalMetrics, nonNormalCount, totalMetrics
+                "Mixed results: %d out of %d metrics follow bell curve patterns, %d don't. " +
+                "For the bell-curve metrics, trust the t-test. For the others, trust the Wilcoxon test. " +
+                "If both tests agree on which algorithm wins, you can be very confident. " +
+                "If they disagree, go with the Wilcoxon result (it's more reliable when data patterns vary).",
+                normalCount, totalMetrics, nonNormalCount
             ));
             interpretation.put("preferredTest", "Both Tests (Mixed Evidence)");
         }
@@ -639,10 +645,11 @@ public class AnalysisInterpretationService {
         interpretation.put("metricAnalysis", metricInterpretations);
         
         interpretation.put("methodologyNote", 
-            "Anderson-Darling test evaluates whether data differences follow a normal distribution. " +
-            "This goodness-of-fit test gives more weight to the tails than alternative tests. " +
-            "P-values > 0.05 indicate normality, validating parametric test assumptions. " +
-            "P-values ≤ 0.05 indicate non-normality, recommending distribution-free methods."
+            "The Anderson-Darling test checks if your data follows a bell curve (normal distribution). " +
+            "Think of it like asking: 'Does this data look like the classic symmetrical hump shape?' " +
+            "If the p-value is above 0.05, the answer is yes (use t-test). " +
+            "If below 0.05, the answer is no (use Wilcoxon test instead). " +
+            "This test is especially good at catching unusual patterns at the extremes of your data."
         );
         
         interpretation.put("practicalGuidance", generateNormalityPracticalGuidance(normalCount, totalMetrics));
@@ -652,17 +659,17 @@ public class AnalysisInterpretationService {
     
     private String generateNormalityPracticalGuidance(int normalCount, int totalMetrics) {
         if (normalCount == totalMetrics) {
-            return "Trust the paired t-test results. The data meets all parametric assumptions, " +
-                   "providing maximum statistical power and narrower confidence intervals for detecting true differences.";
+            return "Use the t-test results with confidence. Your data fits the assumptions perfectly, " +
+                   "giving you the most accurate and powerful statistical analysis possible.";
         } else if (normalCount == 0) {
-            return "Trust the Wilcoxon signed-rank test results. The non-parametric approach is robust to " +
-                   "distributional violations and provides valid conclusions without normality assumptions.";
+            return "Rely on the Wilcoxon test results. Since none of your data follows a bell curve, " +
+                   "the Wilcoxon test gives you reliable answers without making assumptions about data patterns.";
         } else {
             return String.format(
-                "Compare both test results. For %d normal metric(s), t-test is optimal. " +
-                "For %d non-normal metric(s), Wilcoxon test is more appropriate. " +
-                "If both tests agree on significance, conclusions are highly reliable. " +
-                "If tests disagree, prioritize Wilcoxon for conservative, robust inference.",
+                "Here's what to do: For the %d metric(s) with bell-curve data, use the t-test results. " +
+                "For the %d metric(s) without bell-curve patterns, use the Wilcoxon results. " +
+                "If both tests point to the same winner, you can be very confident. " +
+                "If they disagree, go with the Wilcoxon result - it's safer when data patterns aren't ideal.",
                 normalCount, totalMetrics - normalCount
             );
         }
@@ -677,9 +684,9 @@ public class AnalysisInterpretationService {
         
         if ("No clear winner".equals(winner)) {
             return String.format(
-                "With %d/%d metrics showing no significant median difference, " +
-                "algorithm selection may depend on specific operational priorities, " +
-                "cost constraints, or non-measured factors such as implementation complexity and maintenance requirements.",
+                "Since %d out of %d metrics show no clear winner, " +
+                "your choice might come down to other factors: implementation ease, maintenance costs, " +
+                "team familiarity, or specific requirements we didn't measure here.",
                 totalMetrics - significantMetrics, totalMetrics
             );
         }
@@ -692,20 +699,20 @@ public class AnalysisInterpretationService {
         
         StringBuilder implications = new StringBuilder();
         implications.append(String.format(
-            "The rank-based analysis provides strong evidence for %s superiority (%d/%d significant metrics). ",
+            "The statistical evidence strongly favors %s (winning on %d out of %d metrics). ",
             winner, significantMetrics, totalMetrics
         ));
         
         if (avgEffectSize > 0.7) {
-            implications.append("The large effect sizes suggest substantial practical benefits in production deployment. ");
+            implications.append("The differences are large enough that you'd clearly notice the improvement in production. ");
         } else if (avgEffectSize > 0.5) {
-            implications.append("Moderate to large effect sizes indicate meaningful performance differences in real-world scenarios. ");
+            implications.append("The differences are significant enough to make a real difference in your system. ");
         } else {
-            implications.append("While statistically significant, effect sizes suggest modest practical differences. ");
+            implications.append("While the differences are statistically proven, they're relatively modest in size. ");
         }
         
-        implications.append("Consider this evidence alongside operational factors such as resource costs, ");
-        implications.append("scalability requirements, and specific workload characteristics when making deployment decisions.");
+        implications.append("Balance this statistical evidence with practical concerns like costs, scalability needs, ");
+        implications.append("and your specific workload characteristics when making your final decision.");
         
         return implications.toString();
     }
@@ -974,6 +981,20 @@ public class AnalysisInterpretationService {
             return "real-time";
         } else {
             return "mixed";
+        }
+    }
+    
+    private String getEffectSizeInterpretation(String effectSize) {
+        switch (effectSize.toLowerCase()) {
+            case "large":
+                return "substantial and practically important";
+            case "medium":
+                return "moderate and noticeable";
+            case "small":
+                return "small but detectable";
+            case "negligible":
+            default:
+                return "negligible";
         }
     }
 }

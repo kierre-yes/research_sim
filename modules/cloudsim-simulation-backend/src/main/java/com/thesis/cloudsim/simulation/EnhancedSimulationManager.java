@@ -73,9 +73,6 @@ public class EnhancedSimulationManager {
         }
     }
     
-    /**
-     * Static method to cancel any running simulation
-     */
     public static void cancelSimulation() {
         isCancelled = true;
         logger.info("Simulation cancellation requested");
@@ -84,6 +81,10 @@ public class EnhancedSimulationManager {
         } catch (Exception e) {
             logger.debug("Error terminating simulation: {}", e.getMessage());
         }
+    }
+    
+    public static boolean isCancellationRequested() {
+        return isCancelled;
     }
     
     /**

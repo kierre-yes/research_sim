@@ -69,9 +69,8 @@ public class EnhancedACO implements ISchedulingAlgorithm {
         this.previousPheromoneConvergence = Double.MAX_VALUE;
     }
     
-    @Override //scheduling sequence
+    @Override
     public Map<Cloudlet, Vm> schedule(List<Cloudlet> cloudlets, List<Vm> vms, AlgorithmParameters parameters) {
-        // I create defensive copies so that the algorithm doesn't modify the input lists
         this.cloudlets = new ArrayList<>(cloudlets);
         this.vms = new ArrayList<>(vms);
         this.parameters = parameters;
@@ -79,11 +78,14 @@ public class EnhancedACO implements ISchedulingAlgorithm {
         initializeMatrices();
         initializeAnts();
         
-        // aco loop - ants build solutions, deposit pheromones, and learn from each other
         for (currentIteration = 0; currentIteration < parameters.getInt(AlgorithmParameters.MAX_ITERATIONS); currentIteration++) {
-            constructSolutions();     // each ant builds a complete scheduling solution
-            updateBestSolution();     // track the best solution found so far
-            updatePheromones();       // update pheromone trails based on solution quality
+            if (com.thesis.cloudsim.simulation.EnhancedSimulationManager.isCancellationRequested()) {
+                throw new RuntimeException("Simulation cancelled during ACO optimization");
+            }
+            
+            constructSolutions();
+            updateBestSolution();
+            updatePheromones();
             
             // I check for early stopping based on fitness stagnation or pheromone convergence
             if (shouldStopEarly()) {
