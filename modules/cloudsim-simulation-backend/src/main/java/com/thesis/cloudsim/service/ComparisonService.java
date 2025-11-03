@@ -13,6 +13,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.util.*;
@@ -38,6 +39,9 @@ public class ComparisonService {
     
     private final ISchedulingAlgorithm epso;
     private final ISchedulingAlgorithm eaco;
+    
+    @Value("${statistical.analysis.wilcoxon.enabled:false}")
+    private boolean wilcoxonEnabled;
     
     public ComparisonService(@Qualifier("epso") ISchedulingAlgorithm epso,
                             @Qualifier("eaco") ISchedulingAlgorithm eaco) {
@@ -117,7 +121,12 @@ public class ComparisonService {
         
         performNormalityTests(tTestResults, eacoResults, epsoResults);
         
-        performWilcoxonSignedRankTest(tTestResults, eacoResults, epsoResults);
+        if (wilcoxonEnabled) {
+            logger.info("Wilcoxon test enabled - performing Wilcoxon signed-rank test");
+            performWilcoxonSignedRankTest(tTestResults, eacoResults, epsoResults);
+        } else {
+            logger.info("Wilcoxon test disabled - skipping Wilcoxon analysis");
+        }
         
         Map<String, Object> statisticalInterpretation = analysisService.generateStatisticalInterpretation(tTestResults);
         
@@ -126,7 +135,7 @@ public class ComparisonService {
             statisticalInterpretation.put("normalityAnalysis", normalityInterpretation);
         }
         
-        if (tTestResults.getWilcoxonTests() != null && !tTestResults.getWilcoxonTests().isEmpty()) {
+        if (wilcoxonEnabled && tTestResults.getWilcoxonTests() != null && !tTestResults.getWilcoxonTests().isEmpty()) {
             Map<String, Object> wilcoxonInterpretation = analysisService.generateWilcoxonInterpretation(tTestResults);
             statisticalInterpretation.put("wilcoxonAnalysis", wilcoxonInterpretation);
         }
@@ -234,12 +243,21 @@ public class ComparisonService {
                     pValue
                 ));
             } else {
-                test.setRecommendation("Wilcoxon Signed-Rank Test");
-                test.setInterpretation(String.format(
-                    "The data doesn't follow a bell curve pattern (p=%.4f, which is ≤ 0.05). " +
-                    "Use the Wilcoxon test results for this metric instead - they're more reliable when data isn't bell-curve shaped.",
-                    pValue
-                ));
+                if (wilcoxonEnabled) {
+                    test.setRecommendation("Wilcoxon Signed-Rank Test");
+                    test.setInterpretation(String.format(
+                        "The data doesn't follow a bell curve pattern (p=%.4f, which is ≤ 0.05). " +
+                        "Use the Wilcoxon test results for this metric instead - they're more reliable when data isn't bell-curve shaped.",
+                        pValue
+                    ));
+                } else {
+                    test.setRecommendation("Paired T-Test");
+                    test.setInterpretation(String.format(
+                        "The data doesn't follow a perfect bell curve pattern (p=%.4f, which is ≤ 0.05). " +
+                        "However, paired t-test is still used as the primary analysis method for this research.",
+                        pValue
+                    ));
+                }
             }
             
         } catch (Exception e) {
