@@ -4,10 +4,12 @@ import org.cloudbus.cloudsim.Cloudlet;
 import org.cloudbus.cloudsim.Vm;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ThreadLocalRandom;
 import static com.thesis.cloudsim.algorithm.AlgorithmMetricUtils.*;
 
@@ -31,6 +33,7 @@ public class EnhancedPSO implements ISchedulingAlgorithm {
     // This prevents wasting computation when the algorithm has converged
     private double previousBestFitness;
     private int stagnationCounter;
+    private final Map<Integer, Double> fitnessCache;
     
     public EnhancedPSO() {
         this.metrics = new HashMap<>();
@@ -42,6 +45,7 @@ public class EnhancedPSO implements ISchedulingAlgorithm {
         this.currentIteration = 0;
         this.previousBestFitness = Double.MAX_VALUE;
         this.stagnationCounter = 0;
+        this.fitnessCache = new ConcurrentHashMap<>();
     }
     
     /*
@@ -54,6 +58,7 @@ public class EnhancedPSO implements ISchedulingAlgorithm {
         this.currentIteration = 0;
         this.previousBestFitness = Double.MAX_VALUE;
         this.stagnationCounter = 0;
+        this.fitnessCache = new ConcurrentHashMap<>();
     }
 
     @Override
@@ -249,9 +254,16 @@ public class EnhancedPSO implements ISchedulingAlgorithm {
     // LoadBalancer functionality moved to shared utility class
 
     private double calculateFitness(double[] position) {
+        int positionHash = Arrays.hashCode(position);
+        Double cachedFitness = fitnessCache.get(positionHash);
+        if (cachedFitness != null) {
+            return cachedFitness;
+        }
+        
         Map<Cloudlet, Vm> schedule = convertToScheduleMap(position);
-        // I use centralized fitness calculation to ensure consistency with EACO
-        return AlgorithmMetricUtils.calculateFitness(schedule, cloudlets, vms, parameters);
+        double fitness = AlgorithmMetricUtils.calculateFitness(schedule, cloudlets, vms, parameters);
+        fitnessCache.put(positionHash, fitness);
+        return fitness;
     }
 
 
@@ -320,6 +332,7 @@ public class EnhancedPSO implements ISchedulingAlgorithm {
         metrics.clear();
         previousBestFitness = Double.MAX_VALUE;
         stagnationCounter = 0;
+        fitnessCache.clear();
     }
     
     /*

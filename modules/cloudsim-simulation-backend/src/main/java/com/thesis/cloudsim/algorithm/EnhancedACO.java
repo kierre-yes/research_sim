@@ -11,6 +11,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
+import java.util.concurrent.ConcurrentHashMap;
 import static com.thesis.cloudsim.algorithm.AlgorithmMetricUtils.*;
 
 /**
@@ -34,7 +35,8 @@ public class EnhancedACO implements ISchedulingAlgorithm {
     //convergence metrics so that we can stop early when the algorithm stabilizes
     private double previousBestFitness;
     private int stagnationCounter;
-    private double previousPheromoneConvergence;  // I track pheromone variance to detect convergence
+    private double previousPheromoneConvergence;
+    private final Map<Integer, Double> fitnessCache;
     
     // entities also to detect if converge in similar values
     private List<Cloudlet> cloudlets;
@@ -53,6 +55,7 @@ public class EnhancedACO implements ISchedulingAlgorithm {
         this.previousBestFitness = Double.MAX_VALUE;
         this.stagnationCounter = 0;
         this.previousPheromoneConvergence = Double.MAX_VALUE;
+        this.fitnessCache = new ConcurrentHashMap<>();
     }
     
     /*
@@ -67,6 +70,7 @@ public class EnhancedACO implements ISchedulingAlgorithm {
         this.previousBestFitness = Double.MAX_VALUE;
         this.stagnationCounter = 0;
         this.previousPheromoneConvergence = Double.MAX_VALUE;
+        this.fitnessCache = new ConcurrentHashMap<>();
     }
     
     @Override
@@ -320,9 +324,15 @@ public class EnhancedACO implements ISchedulingAlgorithm {
     }
     
     private double calculateFitness(Map<Cloudlet, Vm> schedule) {
-        // I use centralized fitness calculation to ensure consistency with EPSO
-        // This eliminates code duplication and ensures fair algorithm comparison
-        return AlgorithmMetricUtils.calculateFitness(schedule, cloudlets, vms, parameters);
+        int scheduleHash = schedule.hashCode();
+        Double cachedFitness = fitnessCache.get(scheduleHash);
+        if (cachedFitness != null) {
+            return cachedFitness;
+        }
+        
+        double fitness = AlgorithmMetricUtils.calculateFitness(schedule, cloudlets, vms, parameters);
+        fitnessCache.put(scheduleHash, fitness);
+        return fitness;
     }
     
     // these methods were  planned to be removed as they duplicate functionality in AlgorithmMetricUtils
@@ -417,6 +427,7 @@ public class EnhancedACO implements ISchedulingAlgorithm {
         previousBestFitness = Double.MAX_VALUE;
         stagnationCounter = 0;
         previousPheromoneConvergence = Double.MAX_VALUE;
+        fitnessCache.clear();
     }
     
     // Ant class

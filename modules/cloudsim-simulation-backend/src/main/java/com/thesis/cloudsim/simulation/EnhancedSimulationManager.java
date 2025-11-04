@@ -34,6 +34,7 @@ public class EnhancedSimulationManager {
     private static volatile boolean isCancelled = false;
     private final ISchedulingAlgorithm algorithm;
     private final SimulationRequest request;
+    private List<Vm> vmList;
 
     public EnhancedSimulationManager(ISchedulingAlgorithm algorithm, SimulationRequest request) {
         this.algorithm = algorithm;
@@ -54,8 +55,7 @@ public class EnhancedSimulationManager {
             int brokerId = broker.getId();
             checkCancellation();
             
-            Datacenter datacenter = setupDatacenter();
-            List<Vm> vmList = createVirtualMachines(brokerId);
+            Datacenter datacenter = setupDatacenterAndVms(brokerId);
             checkCancellation();
             
             logDebugInfo(datacenter, brokerId);
@@ -104,17 +104,7 @@ public class EnhancedSimulationManager {
     private void resetPreviousSimulation() throws IOException {
         try {
             CloudSim.terminateSimulation();
-            Thread.sleep(200);
         } catch (Exception ignored) {
-            /* I ignore exceptions here as they indicate first run */
-        }
-        
-        System.gc();
-        try {
-            Thread.sleep(100);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new IOException("Interrupted while resetting simulation", e);
         }
     }
     
@@ -149,7 +139,7 @@ public class EnhancedSimulationManager {
     /*
      * I setup the datacenter with the user's configuration from the frontend.
      */
-    private Datacenter setupDatacenter() throws IOException {
+    private Datacenter setupDatacenterAndVms(int brokerId) throws IOException {
         DataCenterConfigurator configurator = new DataCenterConfigurator(
                 request.getNumHosts(),
                 request.getNumPesPerHost(),
@@ -165,28 +155,8 @@ public class EnhancedSimulationManager {
                 request.getVmSize());
         
         String datacenterName = "DC_" + System.currentTimeMillis();
+        this.vmList = configurator.createVms(brokerId);
         return configurator.configureDatacenter(datacenterName);
-    }
-    
-    /*
-     * I create virtual machines based on user's VM configuration.
-     */
-    private List<Vm> createVirtualMachines(int brokerId) {
-        DataCenterConfigurator configurator = new DataCenterConfigurator(
-                request.getNumHosts(),
-                request.getNumPesPerHost(),
-                request.getPeMips(),
-                request.getRamPerHost(),
-                request.getBwPerHost(),
-                request.getStoragePerHost(),
-                request.getNumVMs(),
-                request.getVmMips(),
-                request.getVmPes(),
-                request.getVmRam(),
-                request.getVmBw(),
-                request.getVmSize());
-        
-        return configurator.createVms(brokerId);
     }
     
     /*
@@ -204,9 +174,7 @@ public class EnhancedSimulationManager {
         List<Cloudlet> cloudlets = loadCloudlets();
         logger.debug("Created {} cloudlets", cloudlets.size());
         
-        for (Cloudlet cloudlet : cloudlets) {
-            cloudlet.setUserId(brokerId);
-        }
+        cloudlets.parallelStream().forEach(cloudlet -> cloudlet.setUserId(brokerId));
         
         return cloudlets;
     }
@@ -372,9 +340,6 @@ public class EnhancedSimulationManager {
 
     /*
      * I refactored this to use AlgorithmFactory to eliminate code duplication.
-     * This follows DRY principle - algorithm parameters are now centralized
-     * in AlgorithmFactory where they belong, avoiding maintenance issues
-     * from having the same logic in multiple places.
      */
     private AlgorithmParameters buildAlgorithmParameters(SimulationRequest request) {
         // I delegate to AlgorithmFactory for default parameters to avoid duplication
