@@ -23,7 +23,10 @@ import java.util.stream.Collectors;
 public class IterationService {
     
     private static final Logger logger = LoggerFactory.getLogger(IterationService.class);
-    private final ExecutorService executorService = Executors.newFixedThreadPool(8);
+    //instead of 8, i adjust it to depend on our laptops thread bruh
+    private final ExecutorService executorService = Executors.newFixedThreadPool(
+        Math.min(Runtime.getRuntime().availableProcessors() * 2, 16)
+    );
     private static volatile boolean isCancelled = false;
     
     public IterationResults runIterations(ISchedulingAlgorithm algorithm, SimulationRequest request) {
