@@ -44,6 +44,9 @@ public class TTestResults {
         private double eacoStd;             // Standard deviation of EACO measurements
         private double epsoStd;             // Standard deviation of EPSO measurements
         private String stdInterpretation;   // Interpretation of standard deviations
+        private double eacoMean;            // Mean of EACO measurements
+        private double epsoMean;            // Mean of EPSO measurements
+        private String meanInterpretation;  // interpretation of mean comparison
         
         // Confidence interval
         private double ciLower;             // 95% CI lower bound
