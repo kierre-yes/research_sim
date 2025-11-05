@@ -516,6 +516,9 @@ public class ComparisonService {
         if (eacoAvg == 0.0) eacoAvg = 1.0;
         if (epsoAvg == 0.0) epsoAvg = 1.0;
         
+        test.setEacoMean(eacoAvg);
+        test.setEpsoMean(epsoAvg);
+        
         if (meanDiff < 0) {
             // eaco lower than epso
             if (isLowerBetter) {
@@ -550,6 +553,9 @@ public class ComparisonService {
         double absCohensD = Math.abs(cohensD);
         String effectSize = getCloudComputingEffectSize(absCohensD, metricName);
         test.setEffectSize(effectSize);
+        
+        String meanInterpretation = analysisService.generateMeanInterpretation(metricName, test);
+        test.setMeanInterpretation(meanInterpretation);
         
         return test;
     }

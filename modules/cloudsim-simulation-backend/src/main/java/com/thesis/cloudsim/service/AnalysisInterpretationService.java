@@ -997,4 +997,100 @@ public class AnalysisInterpretationService {
                 return "negligible";
         }
     }
+    
+    public String generateMeanInterpretation(String metricName, TTestResults.MetricTest test) {
+        String metricDisplay = getMetricDisplayName(metricName);
+        boolean lowerIsBetter = isLowerBetterMetric(metricName);
+        
+        if (!test.isSignificant()) {
+            return String.format(
+                "Both algorithms show similar performance for %s. EACO averaged %.2f while EPSO averaged %.2f. " +
+                "The difference isn't large enough to confidently say one is better (p=%.3f).",
+                metricDisplay,
+                test.getEacoMean(),
+                test.getEpsoMean(),
+                test.getPValue()
+            );
+        }
+        
+        String winner = test.getBetterAlgorithm();
+        String loser = winner.equals("EACO") ? "EPSO" : "EACO";
+        double winnerMean = winner.equals("EACO") ? test.getEacoMean() : test.getEpsoMean();
+        double loserMean = winner.equals("EACO") ? test.getEpsoMean() : test.getEacoMean();
+        double improvement = test.getImprovementPercentage();
+        
+        String magnitudePhrase;
+        if (improvement > 20) {
+            magnitudePhrase = "significantly outperforms.";
+        } else if (improvement > 10) {
+            magnitudePhrase = "performs notably better than.";
+        } else if (improvement > 5) {
+            magnitudePhrase = "performs better than";
+        } else {
+            magnitudePhrase = "shows a small but measurable advantage over.";
+        }
+        
+        String comparisonWord = lowerIsBetter ? "faster" : "higher";
+        String unit = getMetricUnit(metricName);
+        
+        return String.format(
+            "%s %s %s for %s. %s achieved %s%s compared to %s's %s%s, making it %.1f%% %s. " +
+            "This difference is statistically reliable (p=%.3f), meaning you can expect this performance advantage in real deployments.",
+            winner,
+            magnitudePhrase,
+            loser,
+            metricDisplay,
+            winner,
+            formatMetricValue(winnerMean),
+            unit,
+            loser,
+            formatMetricValue(loserMean),
+            unit,
+            improvement,
+            comparisonWord,
+            test.getPValue()
+        );
+    }
+    
+    private boolean isLowerBetterMetric(String metricName) {
+        switch (metricName) {
+            case "makespan":
+            case "energyConsumption":
+            case "responseTime":
+            case "loadBalance":
+            case "loadImbalance":
+                return true;
+            case "resourceUtilization":
+                return false;
+            default:
+                return true;
+        }
+    }
+    
+    private String getMetricUnit(String metricName) {
+        switch (metricName) {
+            case "makespan":
+            case "responseTime":
+                return " seconds";
+            case "energyConsumption":
+                return " Wh";
+            case "resourceUtilization":
+                return "%";
+            case "loadBalance":
+            case "loadImbalance":
+                return "";
+            default:
+                return "";
+        }
+    }
+    
+    private String formatMetricValue(double value) {
+        if (value >= 1000) {
+            return String.format("%.0f", value);
+        } else if (value >= 10) {
+            return String.format("%.1f", value);
+        } else {
+            return String.format("%.2f", value);
+        }
+    }
 }
