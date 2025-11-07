@@ -163,7 +163,11 @@ public class ComparisonService {
         // Populate run metadata (top-level)
         comparison.setRunId(java.util.UUID.randomUUID().toString());
         comparison.setSeed(request.getSeed());
-        comparison.setConfigSnapshot(buildConfigSnapshot(request));
+        
+        Map<String, Object> snapshot = buildConfigSnapshot(request);
+        snapshot.put("optimizationAlgorithm", "EACO vs EPSO Comparison");
+        comparison.setConfigSnapshot(snapshot);
+        
         comparison.setDatasetId(computeDatasetId(request.getWorkloadPath()));
         
 
