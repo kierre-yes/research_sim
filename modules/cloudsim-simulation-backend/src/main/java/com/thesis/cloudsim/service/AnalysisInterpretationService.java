@@ -406,16 +406,12 @@ public class AnalysisInterpretationService {
         String effectInterpretation = getEffectSizeInterpretation(test.getEffectSize());
         
         return String.format(
-            "%s performs %.1f%% better for %s. This is a %s difference with high statistical confidence (only %.2f%% chance this is random, Cohen's d = %.3f). " +
-            "We're 95%% confident the true improvement is between %.3f and %.3f units.",
+            "%s performs %.1f%% better for %s. This is a %s difference with high statistical confidence (only %.2f%% chance this is random).",
             test.getBetterAlgorithm(),
             test.getImprovementPercentage(),
             getMetricDisplayName(metricName),
             effectInterpretation,
-            test.getPValue() * 100,
-            test.getCohensD(),
-            test.getCiLower(),
-            test.getCiUpper()
+            test.getPValue() * 100
         );
     }
     
