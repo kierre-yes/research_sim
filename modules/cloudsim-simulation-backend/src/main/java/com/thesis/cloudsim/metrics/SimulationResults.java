@@ -48,6 +48,7 @@ public class SimulationResults {
     public static class SchedulingLogEntry {
         private String type;
         private String description;
+        private String algoDescription;
         private Double vmId;
         private Double cloudletId;
         private Double submissionTime;

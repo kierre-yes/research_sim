@@ -49,14 +49,13 @@ public class AlgorithmFactory {
                 // Balanced exploration between personal and global best
                 params.setParameter(AlgorithmParameters.COGNITIVE_COEFFICIENT, 1.5);
                 params.setParameter(AlgorithmParameters.SOCIAL_COEFFICIENT, 1.5);
-                // Adaptive velocity limits for finer adjustments near convergence
                 params.setParameter(AlgorithmParameters.MAX_VELOCITY, 6.0);
                 params.setParameter(AlgorithmParameters.MIN_VELOCITY, -6.0);
                 params.setParameter(AlgorithmParameters.MAX_VELOCITY_INITIAL, 6.0);
                 params.setParameter(AlgorithmParameters.MAX_VELOCITY_FINAL, 1.0);
+                params.setParameter(AlgorithmParameters.ENABLE_EARLY_STOPPING, true);
             }
             case "EACO", "ENHANCEDACO" -> {
-                // ACO parameters - Equal computational budget: 100 iterations × 30 ants = 3000 evaluations  
                 params.setParameter(AlgorithmParameters.MAX_ITERATIONS, 100);
                 params.setParameter(AlgorithmParameters.POPULATION_SIZE, 30);
                 // Pheromone persistence vs exploration balance
@@ -71,10 +70,11 @@ public class AlgorithmFactory {
                 // Adaptive evaporation rates
                 params.setParameter(AlgorithmParameters.EVAPORATION_MIN, 0.1);
                 params.setParameter(AlgorithmParameters.EVAPORATION_MAX, 0.9);
+                params.setParameter(AlgorithmParameters.ENABLE_EARLY_STOPPING, true);
             }
             case "BPSO", "BASELINEPSO" -> {
                 params.setParameter(AlgorithmParameters.MAX_ITERATIONS, 100);
-                params.setParameter(AlgorithmParameters.POPULATION_SIZE, 50);
+                params.setParameter(AlgorithmParameters.POPULATION_SIZE, 30);
                 params.setParameter(AlgorithmParameters.INERTIA_WEIGHT_MAX, 0.9);
                 params.setParameter(AlgorithmParameters.INERTIA_WEIGHT_MIN, 0.4);
                 params.setParameter(AlgorithmParameters.COGNITIVE_COEFFICIENT, 2.0);
@@ -82,7 +82,7 @@ public class AlgorithmFactory {
             }
             case "BACO", "BASELINEACO" -> {
                 params.setParameter(AlgorithmParameters.MAX_ITERATIONS, 100);
-                params.setParameter(AlgorithmParameters.POPULATION_SIZE, 50);
+                params.setParameter(AlgorithmParameters.POPULATION_SIZE, 30);
                 params.setParameter(AlgorithmParameters.ALPHA, 1.0);
                 params.setParameter(AlgorithmParameters.BETA, 5.0);
                 params.setParameter(AlgorithmParameters.EVAPORATION_MIN, 0.02);

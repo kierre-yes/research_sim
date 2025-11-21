@@ -211,8 +211,14 @@ public class EnhancedSimulationManager {
             logger.warn("Not all cloudlets finished: {} of {}", finished.size(), cloudlets.size());
         }
         
-        MetricsCalculator calculator = new MetricsCalculator(vmList, datacenter, finished, 
-                                                            request.getOptimizationAlgorithm(), vmToHostMap);
+        ISchedulingAlgorithm brokerAlgorithm = broker.getLastUsedAlgorithm();
+        Map<String, Double> algorithmMetrics = brokerAlgorithm != null ? brokerAlgorithm.getMetrics() : null;
+
+        MetricsCalculator calculator = new MetricsCalculator.Builder(vmList, datacenter, finished)
+                .withAlgorithmName(request.getOptimizationAlgorithm())
+                .withVmToHostMapping(vmToHostMap)
+                .withAlgorithmMetrics(algorithmMetrics)
+                .build();
         
         double fitness = extractFitnessValue(broker);
         return calculator.buildResults(fitness);
