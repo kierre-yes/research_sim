@@ -348,6 +348,8 @@ public class EnhancedACO implements ISchedulingAlgorithm {
         metrics.put("iterations", (double) currentIteration);
         metrics.put("converged", currentIteration < parameters.getInt(AlgorithmParameters.MAX_ITERATIONS) ? 1.0 : 0.0);
         metrics.put("pheromoneConvergence", calculatePheromoneConvergence());
+        double evaporationRate = calculateAdaptiveEvaporation();
+        metrics.put("evaporationRate", evaporationRate);
         
         // Calculate and store the fitness value
         double fitness = calculateFitness(schedule);

@@ -278,6 +278,22 @@ public class EnhancedPSO implements ISchedulingAlgorithm {
         metrics.put("responseTime", AlgorithmMetricUtils.responseTime(schedule));
         metrics.put("iterations", (double) currentIteration);
         
+        double inertiaWeight = calculateInertiaWeight();
+        double velocityLimit = calculateAdaptiveVelocityLimit();
+        metrics.put("inertiaWeight", inertiaWeight);
+        metrics.put("velocityLimit", velocityLimit);
+        if (globalBest != null && globalBest.getVelocity() != null && globalBest.getVelocity().length > 0) {
+            double[] velocity = globalBest.getVelocity();
+            int clampedCount = 0;
+            for (double v : velocity) {
+                if (Math.abs(v) >= velocityLimit) {
+                    clampedCount++;
+                }
+            }
+            double clampedRatio = (double) clampedCount / velocity.length;
+            metrics.put("velocityClampedRatio", clampedRatio);
+        }
+        
         // I track convergence status so that we know if early stopping was triggered
         metrics.put("converged", currentIteration < parameters.getInt(AlgorithmParameters.MAX_ITERATIONS) ? 1.0 : 0.0);
         
