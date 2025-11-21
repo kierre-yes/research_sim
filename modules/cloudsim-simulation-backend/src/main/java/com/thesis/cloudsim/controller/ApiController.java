@@ -8,6 +8,7 @@ import com.thesis.cloudsim.simulation.EnhancedSimulationManager;
 import com.thesis.cloudsim.service.IterationService;
 import com.thesis.cloudsim.service.ComparisonService;
 import com.thesis.cloudsim.algorithm.ISchedulingAlgorithm;
+import com.thesis.cloudsim.algorithm.AlgorithmFactory;
 import com.thesis.cloudsim.matlab.MatlabIntegrationService;
 import com.thesis.cloudsim.dto.ProcessedResults;
 import com.thesis.cloudsim.service.AnalysisInterpretationService;
@@ -32,6 +33,7 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.Map;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -86,7 +88,7 @@ public class ApiController {
         try {
             normalizeAndValidate(request);
             ensureSeed(request);
-            return runOrIterate(request);
+            return runOrIterate(request, "/api/run");
         } catch (Exception e) {
             return createErrorResponse(e, request.getOptimizationAlgorithm(), null);
         }
@@ -146,7 +148,7 @@ public class ApiController {
                 logger.info("MATLAB plots requested for file-based simulation");
                 return runWithMatlabPlots(request);
             } else {
-                return runOrIterate(request);
+                return runOrIterate(request, "/api/run-with-file");
             }
         } catch (Exception e) {
             return createErrorResponse(e, params.get("optimizationAlgorithm"), "with-file");
@@ -174,7 +176,7 @@ public class ApiController {
             boolean enableMatlabPlots = Boolean.parseBoolean(params.getOrDefault("enableMatlabPlots", "false"));
             
             // For iterations, we don't generate MATLAB plots (they only work for single runs)
-            return runOrIterate(request);
+            return runOrIterate(request, "/api/run-iterations-with-file");
         } catch (Exception e) {
             return createErrorResponse(e, params.get("optimizationAlgorithm"), params.get("iterations"));
         } finally {
@@ -250,12 +252,28 @@ public class ApiController {
     }
     
     private ISchedulingAlgorithm getAlgorithm(String algorithmName) {
-        if ("EPSO".equalsIgnoreCase(algorithmName)) {
-            logger.debug("Using EPSO algorithm");
-            return epso;
-        } else {
-            logger.debug("Using EACO algorithm");
-            return eaco;
+        if (algorithmName == null) {
+            throw new IllegalArgumentException("Optimization algorithm must not be null");
+        }
+        String normalized = algorithmName.toUpperCase();
+
+        switch (normalized) {
+            case "EPSO", "ENHANCEDPSO" -> {
+                logger.debug("Using EPSO algorithm");
+                return epso;
+            }
+            case "EACO", "ENHANCEDACO" -> {
+                logger.debug("Using EACO algorithm");
+                return eaco;
+            }
+            case "BPSO", "BASELINEPSO", "BACO", "BASELINEACO" -> {
+                logger.debug("Using baseline algorithm: {}", normalized);
+                return AlgorithmFactory.createAlgorithm(normalized);
+            }
+            default -> {
+                logger.warn("Unknown algorithm '{}', falling back to EPSO", algorithmName);
+                return epso;
+            }
         }
     }
     
@@ -392,7 +410,7 @@ public class ApiController {
         }
     }
     
-    private ResponseEntity<?> runOrIterate(SimulationRequest request) throws Exception {
+    private ResponseEntity<?> runOrIterate(SimulationRequest request, String endpoint) throws Exception {
         long startTime = System.currentTimeMillis();
         
         if (request.getIterations() > 1) {
@@ -413,6 +431,7 @@ public class ApiController {
         results.setConfigSnapshot(createConfigSnapshot(request));
         results.setDatasetId(request.getWorkloadPath() != null ? 
             "custom-" + request.getWorkloadPath().hashCode() : "synthetic");
+        logSingleRunResult(request, results, endpoint, executionTime);
         
         //also return analysis like other endpoints do
         ProcessedResults processed = ProcessedResults.builder().rawResults(results).build();
@@ -439,6 +458,56 @@ public class ApiController {
         return snapshot;
     }
 
+    private void logSingleRunResult(SimulationRequest request, SimulationResults results, String endpoint, long executionTimeMs) {
+        try {
+            Map<String, Object> logEntry = new LinkedHashMap<>();
+            logEntry.put("runId", results.getRunId());
+            logEntry.put("timestamp", java.time.Instant.now().toString());
+            logEntry.put("apiEndpoint", endpoint);
+            String algo = request.getOptimizationAlgorithm();
+            logEntry.put("algorithm", algo);
+            boolean isBaseline = algo != null && algo.toUpperCase().startsWith("B");
+            logEntry.put("algorithmVariant", isBaseline ? "baseline" : "enhanced");
+            logEntry.put("isBaseline", isBaseline);
+            logEntry.put("seed", request.getSeed());
+            logEntry.put("datasetId", results.getDatasetId());
+            logEntry.put("executionTimeMs", executionTimeMs);
+
+            Map<String, Object> requestConfig = request.toCustomMap(true, true);
+            requestConfig.put("workloadType", request.getWorkloadType());
+            requestConfig.put("useDefaultWorkload", request.isUseDefaultWorkload());
+            requestConfig.put("iterations", request.getIterations());
+            logEntry.put("requestConfig", requestConfig);
+
+            Map<String, Object> weights = new LinkedHashMap<>();
+            weights.put("makespanWeight", request.getMakespanWeight());
+            weights.put("costWeight", request.getCostWeight());
+            weights.put("energyWeight", request.getEnergyWeight());
+            weights.put("loadBalanceWeight", request.getLoadBalanceWeight());
+            logEntry.put("multiObjectiveWeights", weights);
+
+            SimulationResults.Summary summary = results.getSummary();
+            if (summary != null) {
+                Map<String, Object> summaryMap = new LinkedHashMap<>();
+                summaryMap.put("makespan", summary.getMakespan());
+                summaryMap.put("energyConsumption", summary.getEnergyConsumption());
+                summaryMap.put("loadBalance", summary.getLoadBalance());
+                summaryMap.put("loadImbalance", summary.getLoadImbalance());
+                summaryMap.put("resourceUtilization", summary.getResourceUtilization());
+                summaryMap.put("responseTime", summary.getResponseTime());
+                summaryMap.put("fitness", summary.getFitness());
+                summaryMap.put("totalCost", summary.getTotalCost());
+                summaryMap.put("costEfficiency", summary.getCostEfficiency());
+                logEntry.put("summaryMetrics", summaryMap);
+            }
+
+            String json = objectMapper.writeValueAsString(logEntry);
+            logger.info("SIM_RUN_JSON {}", json);
+        } catch (Exception e) {
+            logger.warn("Failed to log simulation run JSON: {}", e.getMessage());
+        }
+    }
+
     // --- Helpers: validation, seed, and CSV upload policy ---
     private void normalizeAndValidate(SimulationRequest request) {
         // Normalize
@@ -446,8 +515,13 @@ public class ApiController {
             throw new IllegalArgumentException("optimizationAlgorithm is required (EPSO or EACO)");
         }
         String algo = request.getOptimizationAlgorithm().trim().toUpperCase();
-        if (!"EPSO".equals(algo) && !"EACO".equals(algo)) {
-            throw new IllegalArgumentException("optimizationAlgorithm must be EPSO or EACO");
+        if (!"EPSO".equals(algo) &&
+            !"EACO".equals(algo) &&
+            !"BPSO".equals(algo) &&
+            !"BACO".equals(algo) &&
+            !"BASELINEPSO".equals(algo) &&
+            !"BASELINEACO".equals(algo)) {
+            throw new IllegalArgumentException("optimizationAlgorithm must be one of EPSO, EACO, BPSO, BACO, BASELINEPSO, BASELINEACO");
         }
         request.setOptimizationAlgorithm(algo);
         if (request.getVmScheduler() == null || request.getVmScheduler().isBlank()) {

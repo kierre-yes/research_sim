@@ -50,8 +50,11 @@ public class SimulationRequest {
     }
     // data center config
     @NotBlank(message = "Optimization algorithm is required")
-    @Pattern(regexp = "^(EPSO|EACO|epso|eaco)$", message = "Algorithm must be EPSO or EACO")
-    private String optimizationAlgorithm;  // epso/eaco
+    @Pattern(
+            regexp = "^(?i)(EPSO|EACO|BPSO|BACO|BASELINEPSO|BASELINEACO)$",
+            message = "Algorithm must be EPSO, EACO, BPSO, BACO, BASELINEPSO, or BASELINEACO"
+    )
+    private String optimizationAlgorithm;
     
     @Min(value = 1, message = "Number of hosts must be at least 1")
     @Max(value = 1000, message = "Number of hosts cannot exceed 1000")

@@ -11,6 +11,7 @@ import com.thesis.cloudsim.service.AsyncPlotGenerationService.PlotGenerationStat
 import com.thesis.cloudsim.metrics.SimulationResults;
 import com.thesis.cloudsim.util.ConfigurationSnapshotUtil;
 import com.thesis.cloudsim.simulation.EnhancedSimulationManager;
+import com.thesis.cloudsim.algorithm.AlgorithmFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.web.bind.annotation.*;
@@ -93,12 +94,29 @@ public class SimulationController {
     }
     
     private ISchedulingAlgorithm selectAlgorithm(SimulationRequest request) {
-        if ("EPSO".equalsIgnoreCase(request.getOptimizationAlgorithm())) {
-            logger.debug("Using EPSO algorithm");
-            return epso;
-        } else {
-            logger.debug("Using EACO algorithm");
-            return eaco;
+        String algorithmName = request.getOptimizationAlgorithm();
+        if (algorithmName == null) {
+            throw new IllegalArgumentException("Optimization algorithm must not be null");
+        }
+        String normalized = algorithmName.toUpperCase();
+
+        switch (normalized) {
+            case "EPSO", "ENHANCEDPSO" -> {
+                logger.debug("Using EPSO algorithm");
+                return epso;
+            }
+            case "EACO", "ENHANCEDACO" -> {
+                logger.debug("Using EACO algorithm");
+                return eaco;
+            }
+            case "BPSO", "BASELINEPSO", "BACO", "BASELINEACO" -> {
+                logger.debug("Using baseline algorithm: {}", normalized);
+                return AlgorithmFactory.createAlgorithm(normalized);
+            }
+            default -> {
+                logger.warn("Unknown algorithm '{}', falling back to EPSO", algorithmName);
+                return epso;
+            }
         }
     }
 

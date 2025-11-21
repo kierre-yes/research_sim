@@ -24,8 +24,6 @@ public final class SimulationConstants {
     /*
      * I add an inner class for energy model constants based on typical server specifications.
      * These values are from Dell PowerEdge R740 server specifications which is commonly
-     * used in data centers. Having them centralized makes it easy to adapt for different
-     * server models in future research.
      */
     public static final class EnergyModel {
         // 100 util, i based on the manuscript

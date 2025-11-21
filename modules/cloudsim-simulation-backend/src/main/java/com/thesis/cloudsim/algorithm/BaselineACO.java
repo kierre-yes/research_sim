@@ -10,19 +10,26 @@ import java.util.Map;
 import java.util.Random;
 import static com.thesis.cloudsim.algorithm.AlgorithmMetricUtils.*;
 
-
 public class BaselineACO implements ISchedulingAlgorithm {
     
     private static final String ALGORITHM_NAME = "BACO";
+    private static final double DEFAULT_ALPHA = 1.0;
+    private static final double DEFAULT_BETA = 5.0;
+    private static final double DEFAULT_EVAPORATION = 0.02;
+    private static final double Q_CONSTANT = 1.0;
+    private static final double PROB_BEST = 0.05;
     private final Map<String, Double> metrics;
     private final Random random;
     
     private List<Ant> ants;
     private double[][] pheromoneMatrix;
     private double[][] heuristicMatrix;
+    private double tauMax;
+    private double tauMin;
     private Map<Cloudlet, Vm> bestSolution;
     private double bestFitness;
     private int currentIteration;
+    private Ant iterationBestAnt;
     
     private double previousBestFitness;
     private int stagnationCounter;
@@ -61,18 +68,19 @@ public class BaselineACO implements ISchedulingAlgorithm {
         initializeAnts();
         
         for (currentIteration = 0; currentIteration < parameters.getInt(AlgorithmParameters.MAX_ITERATIONS); currentIteration++) {
+            iterationBestAnt = null;
             constructSolutions();
             updateBestSolution();
-            updatePheromones();
+            updatePheromones(iterationBestAnt);
             
             if (shouldStopEarly()) {
                 break;
             }
         }
         
-        Map<Cloudlet, Vm> balancedSolution = applyLoadBalancing(bestSolution);
-        calculateMetrics(balancedSolution);
-        return new HashMap<>(balancedSolution);
+        Map<Cloudlet, Vm> result = bestSolution == null ? new HashMap<>() : new HashMap<>(bestSolution);
+        calculateMetrics(result);
+        return result;
     }
     
     private void initializeMatrices() {
@@ -80,7 +88,7 @@ public class BaselineACO implements ISchedulingAlgorithm {
         int vmCount = vms.size();
         
         pheromoneMatrix = new double[cloudletCount][vmCount];
-        double initialPheromone = parameters.getDouble(AlgorithmParameters.INITIAL_PHEROMONE);
+        double initialPheromone = initializePheromoneBounds();
         
         // Initialize pheromones uniformly (no random variation in baseline)
         for (int i = 0; i < cloudletCount; i++) {
@@ -123,17 +131,19 @@ public class BaselineACO implements ISchedulingAlgorithm {
             Map<Cloudlet, Vm> solution = ant.getSolution();
             double fitness = calculateFitness(solution);
             ant.setFitness(fitness);
+            
+            if (iterationBestAnt == null || fitness < iterationBestAnt.getFitness()) {
+                iterationBestAnt = ant;
+            }
         }
     }
     
     private void updateBestSolution() {
         double oldBestFitness = bestFitness;
         
-        for (Ant ant : ants) {
-            if (ant.getFitness() < bestFitness) {
-                bestFitness = ant.getFitness();
-                bestSolution = new HashMap<>(ant.getSolution());
-            }
+        if (iterationBestAnt != null && iterationBestAnt.getFitness() < bestFitness) {
+            bestFitness = iterationBestAnt.getFitness();
+            bestSolution = new HashMap<>(iterationBestAnt.getSolution());
         }
         
         if (parameters.getBoolean(AlgorithmParameters.ENABLE_EARLY_STOPPING)) {
@@ -148,79 +158,90 @@ public class BaselineACO implements ISchedulingAlgorithm {
         }
     }
     
-    
-    private void updatePheromones() {
+    private void updatePheromones(Ant iterationBest) {
         // FIXED evaporation rate (baseline - no adaptation)
-        double evaporationRate = parameters.getDouble(AlgorithmParameters.EVAPORATION_MIN);
+        double evaporationRate = parameters.hasParameter(AlgorithmParameters.EVAPORATION_MIN)
+                ? parameters.getDouble(AlgorithmParameters.EVAPORATION_MIN)
+                : DEFAULT_EVAPORATION;
         
         // Evaporate existing pheromones
         for (int i = 0; i < pheromoneMatrix.length; i++) {
             for (int j = 0; j < pheromoneMatrix[i].length; j++) {
                 pheromoneMatrix[i][j] *= (1.0 - evaporationRate);
-                
-                double minPheromone = parameters.getDouble(AlgorithmParameters.MIN_PHEROMONE);
-                pheromoneMatrix[i][j] = Math.max(pheromoneMatrix[i][j], minPheromone);
             }
         }
         
-        // Each ant deposits pheromones
-        for (Ant ant : ants) {
-            depositPheromones(ant);
+        if (iterationBest != null) {
+            double pheromoneDeposit = Q_CONSTANT / (1.0 + iterationBest.getFitness());
+            Map<Cloudlet, Vm> solution = iterationBest.getSolution();
+            
+            // Each ant deposits pheromones
+            for (int i = 0; i < cloudlets.size(); i++) {
+                Cloudlet cloudlet = cloudlets.get(i);
+                Vm assignedVm = solution.get(cloudlet);
+                
+                if (assignedVm != null) {
+                    int vmIndex = vms.indexOf(assignedVm);
+                    if (vmIndex >= 0) {
+                        pheromoneMatrix[i][vmIndex] += pheromoneDeposit;
+                    }
+                }
+            }
         }
-        
-        // NO load-based reinforcement in baseline
-        // Just simple best solution reinforcement
-        simpleReinforceBestSolution();
         
         limitPheromoneLevel();
     }
     
-    private void depositPheromones(Ant ant) {
-        double pheromoneDeposit = 1.0 / (1.0 + ant.getFitness());
-        Map<Cloudlet, Vm> solution = ant.getSolution();
-        
-        for (int i = 0; i < cloudlets.size(); i++) {
-            Cloudlet cloudlet = cloudlets.get(i);
-            Vm assignedVm = solution.get(cloudlet);
-            
-            if (assignedVm != null) {
-                int vmIndex = vms.indexOf(assignedVm);
-                if (vmIndex >= 0) {
-                    pheromoneMatrix[i][vmIndex] += pheromoneDeposit;
-                }
-            }
-        }
-    }
-    
-    
-    private void simpleReinforceBestSolution() {
-        if (bestSolution == null) return;
-        
-        // Simple uniform reinforcement (no load-based heuristic)
-        double reinforcement = 1.0 / (1.0 + bestFitness);
-        
-        for (int i = 0; i < cloudlets.size(); i++) {
-            Cloudlet cloudlet = cloudlets.get(i);
-            Vm assignedVm = bestSolution.get(cloudlet);
-            
-            if (assignedVm != null) {
-                int vmIndex = vms.indexOf(assignedVm);
-                if (vmIndex >= 0) {
-                    // Uniform reinforcement (no load consideration)
-                    pheromoneMatrix[i][vmIndex] += reinforcement;
-                }
-            }
-        }
-    }
-    
     private void limitPheromoneLevel() {
-        double maxPheromone = parameters.getDouble(AlgorithmParameters.MAX_PHEROMONE);
-        
         for (int i = 0; i < pheromoneMatrix.length; i++) {
             for (int j = 0; j < pheromoneMatrix[i].length; j++) {
-                pheromoneMatrix[i][j] = Math.min(pheromoneMatrix[i][j], maxPheromone);
+                if (pheromoneMatrix[i][j] > tauMax) {
+                    pheromoneMatrix[i][j] = tauMax;
+                } else if (pheromoneMatrix[i][j] < tauMin) {
+                    pheromoneMatrix[i][j] = tauMin;
+                }
             }
         }
+    }
+
+    private double initializePheromoneBounds() {
+        double estimatedCost = calculateNearestNeighborCost();
+        double evaporationRate = parameters.hasParameter(AlgorithmParameters.EVAPORATION_MIN)
+                ? parameters.getDouble(AlgorithmParameters.EVAPORATION_MIN)
+                : DEFAULT_EVAPORATION;
+        
+        if (estimatedCost <= 0) {
+            tauMax = 1.0;
+            tauMin = 1.0;
+            return tauMax;
+        }
+        
+        tauMax = 1.0 / (evaporationRate * estimatedCost);
+        double pRoot = Math.pow(PROB_BEST, 1.0 / Math.max(1, cloudlets.size()));
+        double denominator = (cloudlets.size() / 2.0) * pRoot;
+        if (denominator <= 0) {
+            tauMin = tauMax;
+        } else {
+            tauMin = (tauMax * (1.0 - pRoot)) / denominator;
+        }
+        return tauMax;
+    }
+
+    private double calculateNearestNeighborCost() {
+        double total = 0.0;
+        for (Cloudlet cloudlet : cloudlets) {
+            double minTime = Double.MAX_VALUE;
+            for (Vm vm : vms) {
+                double execTime = cloudlet.getCloudletLength() / vm.getMips();
+                if (execTime < minTime) {
+                    minTime = execTime;
+                }
+            }
+            if (minTime < Double.MAX_VALUE) {
+                total += minTime;
+            }
+        }
+        return total;
     }
     
     private double calculateFitness(Map<Cloudlet, Vm> schedule) {
@@ -259,9 +280,12 @@ public class BaselineACO implements ISchedulingAlgorithm {
         bestSolution = null;
         bestFitness = Double.MAX_VALUE;
         currentIteration = 0;
+        iterationBestAnt = null;
         metrics.clear();
         previousBestFitness = Double.MAX_VALUE;
         stagnationCounter = 0;
+        tauMax = 0.0;
+        tauMin = 0.0;
     }
     
     private class Ant {
@@ -299,8 +323,10 @@ public class BaselineACO implements ISchedulingAlgorithm {
         }
         
         private double[] calculateProbabilities(int cloudletIndex) {
-            double alpha = parameters.getDouble(AlgorithmParameters.ALPHA);
-            double beta = parameters.getDouble(AlgorithmParameters.BETA);
+            double alpha = parameters.hasParameter(AlgorithmParameters.ALPHA) ?
+                    parameters.getDouble(AlgorithmParameters.ALPHA) : DEFAULT_ALPHA;
+            double beta = parameters.hasParameter(AlgorithmParameters.BETA) ?
+                    parameters.getDouble(AlgorithmParameters.BETA) : DEFAULT_BETA;
             double[] probabilities = new double[vms.size()];
             double totalProbability = 0.0;
             
@@ -342,17 +368,5 @@ public class BaselineACO implements ISchedulingAlgorithm {
         
         int maxStagnation = parameters.getInt(AlgorithmParameters.STAGNATION_ITERATIONS);
         return stagnationCounter >= maxStagnation;
-    }
-    
-    private Map<Cloudlet, Vm> applyLoadBalancing(Map<Cloudlet, Vm> originalSchedule) {
-        if (originalSchedule == null) {
-            return originalSchedule;
-        }
-        
-        Map<Cloudlet, Vm> balancedSchedule = new HashMap<>(originalSchedule);
-        LoadBalancer balancer = new LoadBalancer(balancedSchedule, vms, cloudlets);
-        balancer.balance();
-        
-        return balancedSchedule;
     }
 }
