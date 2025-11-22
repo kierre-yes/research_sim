@@ -240,7 +240,7 @@ public class MetricsCalculator {
             hostUtilization += vmUtilization * (vmMips / hostMips);
         }
         
-        return Math.min(1.0, hostUtilization);
+        return hostUtilization;
     }
     
     /*
@@ -260,7 +260,7 @@ public class MetricsCalculator {
             }
         }
         
-        return Math.min(1.0, vmUtilization);
+        return vmUtilization;
     }
 
     /*
@@ -424,7 +424,7 @@ public class MetricsCalculator {
             double cpuUtilization = 0.0;
             if (!vmCloudlets.isEmpty() && makespan > 0 && vm.getNumberOfPes() > 0) {
                 double peCapacity = makespan * vm.getNumberOfPes();
-                cpuUtilization = Math.min(100.0, (totalExecTime / peCapacity) * 100.0);
+                cpuUtilization = (totalExecTime / peCapacity) * 100.0;
             }
             
             vmUtilizations.add(SimulationResults.VmUtilization.builder()

@@ -73,9 +73,7 @@ public class BaselineACO implements ISchedulingAlgorithm {
             updateBestSolution();
             updatePheromones(iterationBestAnt);
             
-            if (shouldStopEarly()) {
-                break;
-            }
+            
         }
         
         Map<Cloudlet, Vm> result = bestSolution == null ? new HashMap<>() : new HashMap<>(bestSolution);
@@ -109,7 +107,6 @@ public class BaselineACO implements ISchedulingAlgorithm {
                 
                 double executionTime = cloudlet.getCloudletLength() / vm.getMips();
                 
-                // Simple heuristic without resource considerations
                 heuristicMatrix[i][j] = 1.0 / executionTime;
             }
         }
