@@ -51,9 +51,6 @@ public class BaselinePSO implements ISchedulingAlgorithm {
         initializeParticles();
 
         for (currentIteration = 0; currentIteration < parameters.getInt(AlgorithmParameters.MAX_ITERATIONS); currentIteration++) {
-            if (shouldStopEarly()) {
-                break;
-            }
 
             updateParticles();
             updateGlobalBest();

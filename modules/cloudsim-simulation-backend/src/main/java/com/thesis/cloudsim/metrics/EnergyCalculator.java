@@ -140,7 +140,7 @@ public class EnergyCalculator {
             totalHostUtilization += vmUtilization * (vmMips / hostMips);
         }
         
-        return Math.min(1.0, totalHostUtilization);
+        return totalHostUtilization;
     }
     
     /**
@@ -159,7 +159,7 @@ public class EnergyCalculator {
             }
         }
         
-        return Math.min(1.0, vmUtilization);
+        return vmUtilization;
     }
     
     /**
@@ -185,8 +185,14 @@ public class EnergyCalculator {
         
         double avgPower;
         if (utilization > 0) {
+            double rawUtilization = utilization;
+            double cappedUtilization = Math.min(1.0, Math.max(0.0, rawUtilization));
+            if (rawUtilization > 1.0) {
+                logger.debug("Host oversubscribed in energy model: rawUtilization={} cappedUtilization={}",
+                        rawUtilization, cappedUtilization);
+            }
             // I apply the power model: P = (P_max - P_idle) × U^α + P_idle
-            avgPower = (busyPower - idlePower) * Math.pow(utilization, alpha) + idlePower;
+            avgPower = (busyPower - idlePower) * Math.pow(cappedUtilization, alpha) + idlePower;
         } else {
             avgPower = 0.0;
         }
