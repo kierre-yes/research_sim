@@ -19,7 +19,6 @@ public class AlgorithmFactory {
         return switch (algorithmName.toUpperCase()) {
             case "EPSO", "ENHANCEDPSO" -> new EnhancedPSO();
             case "EACO", "ENHANCEDACO" -> new EnhancedACO();
-            // baseline
             case "BPSO", "BASELINEPSO" -> new BaselinePSO();
             case "BACO", "BASELINEACO" -> new BaselineACO();
             default -> throw new IllegalArgumentException("Unknown algorithm: " + algorithmName);
